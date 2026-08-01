@@ -350,9 +350,10 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
 /* ===== Seating chart ===== */
 .st-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .st-seg{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:12px;}
+.st-canvas-scroll{overflow:auto;border-radius:20px;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;}
 .st-canvas-wrap{border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--sh-1);
   background-image:radial-gradient(var(--border) .8px,transparent .8px);background-size:22px 22px;background-position:14px 32px;
-  position:relative;min-height:clamp(480px,78vh,780px);touch-action:none;}
+  position:relative;width:960px;height:640px;flex:none;}
 .st-board{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:56%;max-width:360px;height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--border);}
 .st-board-label{position:absolute;top:26px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);}
 
@@ -419,6 +420,8 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
   body *{visibility:hidden;}
   .report-doc,.report-doc *{visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .report-doc{position:absolute;left:0;top:0;width:100%;max-width:none !important;box-shadow:none !important;border:none !important;padding:0 !important;margin:0 !important;}
+  .st-canvas-scroll{overflow:visible !important;}
+  .st-canvas-wrap{width:100% !important;height:auto !important;aspect-ratio:3/2 !important;}
   .no-print{display:none !important;}
   .screen-only{display:none !important;}
   .print-only{display:block !important;}
@@ -1498,17 +1501,27 @@ function Roster({roster,sections,addStudents,updStudent,delStudent,onReport}){
 
   return(<div>
     <div className="card" style={{padding:20,marginBottom:18}}>
-      <div className="linkrow" style={{marginBottom:0,flexWrap:"wrap"}}>
+      <label className="fl">Add a student</label>
+      <div className="linkrow" style={{marginBottom:8,flexWrap:"wrap"}}>
         <input className="input" style={{flex:"1 1 200px"}} placeholder="Student name" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addOne();}}/>
-        <input className="input" style={{flex:"0 0 130px"}} placeholder="Class" value={sec} onChange={e=>setSec(e.target.value)} list="secs"/>
-        <datalist id="secs">{sections.map(s=><option key={s} value={s}/>)}</datalist>
+        <input className="input" style={{flex:"0 0 130px"}} placeholder="Class" value={sec} onChange={e=>setSec(e.target.value)}/>
         <select className="select" style={{flex:"0 0 130px"}} value={lang} onChange={e=>setLang(e.target.value)}>{LANGS.map(l=><option key={l}>{l}</option>)}</select>
         <select className="select" style={{flex:"0 0 150px"}} value={flag} onChange={e=>setFlag(e.target.value)}><option value="none">No flag</option><option value="intervention">Intervention</option><option value="enrichment">Enrichment</option></select>
         <button className="btn btn-primary" onClick={addOne}><I d={ic.plus} s={14}/> Add</button>
       </div>
-      <button className="add-link" style={{marginTop:12}} onClick={()=>setShowBulk(v=>!v)}>{showBulk?"Hide":"Paste a class list"}</button>
+      {!!sections.length&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+        <span style={{fontSize:11.5,color:"var(--muted)"}}>Your classes:</span>
+        {sections.map(s=><button key={s} className={"fchip"+(sec===s?" on":"")} onClick={()=>setSec(s)}>{s}</button>)}
+      </div>}
+      <div className="hint">Tap an existing class above, or just type a new name in the Class box (e.g. "Class 2") to start another one.</div>
+      <button className="add-link" style={{marginTop:14}} onClick={()=>setShowBulk(v=>!v)}>{showBulk?"Hide":"Paste a class list"}</button>
       {showBulk&&<div style={{marginTop:10}}>
-        <div className="linkrow"><input className="input" style={{flex:"0 0 160px"}} placeholder="Class" value={bulkSec} onChange={e=>setBulkSec(e.target.value)}/><span style={{flex:1,alignSelf:"center",fontSize:12,color:"var(--muted)"}}>One name per line</span></div>
+        <label className="fl">Class for this pasted list</label>
+        <div className="linkrow" style={{marginBottom:6}}><input className="input" style={{flex:"0 0 160px"}} placeholder="Class" value={bulkSec} onChange={e=>setBulkSec(e.target.value)}/><span style={{flex:1,alignSelf:"center",fontSize:12,color:"var(--muted)"}}>One name per line</span></div>
+        {!!sections.length&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
+          <span style={{fontSize:11.5,color:"var(--muted)"}}>Your classes:</span>
+          {sections.map(s=><button key={s} className={"fchip"+(bulkSec===s?" on":"")} onClick={()=>setBulkSec(s)}>{s}</button>)}
+        </div>}
         <textarea className="textarea" style={{minHeight:110}} value={bulk} onChange={e=>setBulk(e.target.value)} placeholder={"Ana Valencia\nDiego Ramos\nSofía Torres…"}/>
         <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={addBulk}>Add all</button>
       </div>}
@@ -2347,6 +2360,7 @@ function SeatingView({state,setState,toast}){
       </div>}
     </div>}
 
+    <div className="st-canvas-scroll">
     <div ref={canvasRef} className={"st-canvas-wrap report-doc"+(heat?" st-heat":"")} onClick={onCanvasClick}>
       <div className="print-only" style={{position:"absolute",top:10,left:14,zIndex:5}}><div className="serif" style={{fontSize:19,fontWeight:600}}>Seating chart · {section}</div><div style={{fontSize:12,color:"var(--muted)"}}>{prettyLong(today)}</div></div>
       <div className="st-board"></div><div className="st-board-label">Front of room</div>
@@ -2387,6 +2401,7 @@ function SeatingView({state,setState,toast}){
           {mode==="teach"&&e&&e.followup&&<div className="st-clock"><I d={ic.clock} s={11}/></div>}
         </div>);
       })}
+    </div>
     </div>
 
     {mode==="teach"&&<div className="no-print" style={{fontSize:12,color:"var(--muted)",marginTop:12,lineHeight:1.55}}>Tap a desk for quick actions · press &amp; hold for the Student Snapshot · the gold page means evidence today, the red clock means follow-up.</div>}
@@ -2932,13 +2947,13 @@ function MiniSeatChart({state,section}){
   const unassigned=state.students.filter(s=>s.section===section&&!seatedIds.has(s.id));
   return(<div style={{marginBottom:22}}>
     <div style={{fontWeight:600,fontSize:13.5,marginBottom:8}}>{section}</div>
-    {desks.length?(<div className="st-canvas-wrap" style={{position:"relative",aspectRatio:"16/10",minHeight:260}}>
+    {desks.length?(<div className="st-canvas-scroll"><div className="st-canvas-wrap">
       <div className="st-board"></div><div className="st-board-label">Front of room</div>
       {desks.map(d=>{const s=d.studentId?studById[d.studentId]:null;
         return(<div key={d.id} className="st-desk" style={{left:d.x+"%",top:d.y+"%",transform:`translate(-50%,-50%) rotate(${d.rot||0}deg)`,cursor:"default"}}>
           {s?<div className="st-name" style={{fontSize:12.5}}>{s.name}</div>:<div className="st-empty-label">Empty</div>}
         </div>);})}
-    </div>):<div style={{fontSize:12.5,color:"var(--muted)"}}>No seating chart set up for this class yet.</div>}
+    </div></div>):<div style={{fontSize:12.5,color:"var(--muted)"}}>No seating chart set up for this class yet.</div>}
     {!!unassigned.length&&<div style={{fontSize:11.5,color:"var(--muted)",marginTop:6}}>Not yet assigned a desk: {unassigned.map(s=>s.name).join(", ")}</div>}
   </div>);
 }
