@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Teacher OS</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 
 <!-- ============================================================
      FONTS
@@ -3418,6 +3421,12 @@ function App(){
   const [mobileNav,setMobileNav]=useState(false);
   const [locked,setLocked]=useState(()=>{try{return !CLOUD&&!!localStorage.getItem("teacher-os-lock")&&sessionStorage.getItem("teacher-os-unlocked")!=="1";}catch(e){return false;}});
   const skipSave=useRef(false);
+
+  // backfill any new built-in test presets (e.g. Grade 3 scales added after this teacher's data already existed)
+  useEffect(()=>{
+    const need=EMPTY_STATE.testDefs.filter(d=>!(state.testDefs||[]).some(x=>x.id===d.id));
+    if(need.length)setState(p=>({...p,testDefs:[...(p.testDefs||[]),...need]}));
+  },[state.testDefs]);
   const history=useRef([]);
   const stateRef=useRef(state);
   const [canUndo,setCanUndo]=useState(false);
