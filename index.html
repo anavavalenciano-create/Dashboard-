@@ -506,8 +506,44 @@ const EMPTY_STATE={
   subInfo:{schedule:"",procedures:"",behavior:"",contacts:"",notes:""},
   subPlanNotes:{}, // dateISO -> free text for that day's sub plan
   testDefs:[        // reusable test definitions with teacher-set color bands
-    {id:"sba",name:"SBA",bands:{gold:2,green:3}},
-    {id:"star-math",name:"STAR Math",bands:{gold:40,green:70}},
+    {id:"sba",name:"SBA",levels:[
+      {label:"Level 1",min:0,color:"terra"},
+      {label:"Level 2",min:2411,color:"gold"},
+      {label:"Level 3",min:2486,color:"olive"},
+      {label:"Level 4",min:2550,color:"oliveDeep"},
+    ]},
+    {id:"sba-g3",name:"SBA (Grade 3)",levels:[
+      {label:"Level 1",min:0,color:"terra"},
+      {label:"Level 2",min:2381,color:"gold"},
+      {label:"Level 3",min:2436,color:"olive"},
+      {label:"Level 4",min:2501,color:"oliveDeep"},
+    ]},
+    {id:"star-math",name:"STAR Math",
+      levels:[ // fallback if no window is set — Fall's scale
+        {label:"Well Below",min:0,color:"terra"},
+        {label:"Below",min:916,color:"gold"},
+        {label:"At Benchmark",min:957,color:"olive"},
+        {label:"Above Benchmark",min:1010,color:"oliveDeep"},
+      ],
+      windows:{
+        "fall":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:916,color:"gold"},{label:"At Benchmark",min:957,color:"olive"},{label:"Above Benchmark",min:1010,color:"oliveDeep"}],
+        "winter 2":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:951,color:"gold"},{label:"At Benchmark",min:983,color:"olive"},{label:"Above Benchmark",min:1032,color:"oliveDeep"}],
+        "winter":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:935,color:"gold"},{label:"At Benchmark",min:980,color:"olive"},{label:"Above Benchmark",min:1035,color:"oliveDeep"}],
+        "spring":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:954,color:"gold"},{label:"At Benchmark",min:1002,color:"olive"},{label:"Above Benchmark",min:1061,color:"oliveDeep"}],
+      }},
+    {id:"star-math-g3",name:"STAR Math (Grade 3)",
+      levels:[ // fallback if no window is set — Fall's scale
+        {label:"Well Below",min:0,color:"terra"},
+        {label:"Below",min:870,color:"gold"},
+        {label:"At Benchmark",min:908,color:"olive"},
+        {label:"Above Benchmark",min:959,color:"oliveDeep"},
+      ],
+      windows:{
+        "fall":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:870,color:"gold"},{label:"At Benchmark",min:908,color:"olive"},{label:"Above Benchmark",min:959,color:"oliveDeep"}],
+        "winter 2":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:910,color:"gold"},{label:"At Benchmark",min:942,color:"olive"},{label:"Above Benchmark",min:988,color:"oliveDeep"}],
+        "winter":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:893,color:"gold"},{label:"At Benchmark",min:934,color:"olive"},{label:"Above Benchmark",min:986,color:"oliveDeep"}],
+        "spring":[{label:"Well Below",min:0,color:"terra"},{label:"Below",min:916,color:"gold"},{label:"At Benchmark",min:960,color:"olive"},{label:"Above Benchmark",min:1012,color:"oliveDeep"}],
+      }},
   ],
   testScores:[],    // [{id,studentId,testDefId,subject,window,date,score}]
   rosterSort:"first", // 'first' | 'last' — how student lists alphabetize
@@ -1881,8 +1917,7 @@ function ReportsView({state,setState,initialStudent}){
               <div className="p-sec-t">Assessment scores</div>
               {scores.map(t=>{const def=defById(t.testDefId);
                 return(<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"5px 0",fontSize:13}}>
-                  <ScoreBadge score={t.score} def={def}/>
-                  <span style={{fontWeight:550}}>{def?def.name:"Test"}{t.subject?" · "+t.subject:""}</span>
+                  <ScoreBadge score={t.score} def={def} windowLabel={t.window} showLabel/>
                   <span style={{marginLeft:"auto",fontSize:11.5,color:"var(--muted)"}}>{t.window||pretty(t.date)}</span>
                 </div>);})}
             </div>);})()}
@@ -1914,10 +1949,13 @@ function ReportsView({state,setState,initialStudent}){
           <div style={{marginTop:16}}>
             <div className="p-sec-t">Observation log <span style={{fontWeight:500,color:"var(--muted)",textTransform:"none",letterSpacing:0}}>· every desk note recorded for {firstName || "this student"}</span></div>
             {obsLog.length?(<div style={{marginTop:2}}>
-              {obsLog.map((o,i)=>(<div key={i} style={{display:"flex",gap:10,padding:"6px 0",fontSize:13,borderBottom:"1px solid var(--border)"}}>
-                <span style={{color:"var(--muted)",minWidth:64,flex:"0 0 64px"}}>{pretty(o.day)}</span>
-                {o.kind&&o.kind!=="flag"&&<span className="pill pill-gray" style={{fontSize:9.5,height:"fit-content"}}>{o.kind}</span>}
-                <span style={{flex:1,color:o.kind==="flag"?"var(--terra-deep)":"var(--ink-2)"}}>{o.text}</span>
+              {obsLog.map((o,i)=>(<div key={i} style={{padding:"6px 0",fontSize:13,borderBottom:"1px solid var(--border)"}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:2}}>
+                  <span style={{color:"var(--muted)",fontSize:12}}>{pretty(o.day)}</span>
+                  {o.kind&&o.kind!=="flag"&&<span className="pill pill-gray" style={{fontSize:9.5}}>{o.kind}</span>}
+                  {o.lessonId&&<span style={{fontSize:11,color:"var(--olive-deep)",fontWeight:600}}>{lessonTag(state,o.lessonId)}</span>}
+                </div>
+                <div style={{color:o.kind==="flag"?"var(--terra-deep)":"var(--ink-2)"}}>{o.text}</div>
               </div>))}
             </div>):<div style={{fontSize:13,color:"var(--muted-2)",padding:"6px 0"}}>No desk observations recorded yet — these come from tapping a desk in the seating chart.</div>}
           </div>
@@ -2193,6 +2231,12 @@ function SortToggle({state,setState}){
     <button className={"btn btn-sm"+(mode==="last"?" btn-primary":" btn-ghost")} onClick={()=>setState(p=>({...p,rosterSort:"last"}))}>Last name</button>
   </div>);
 }
+function lessonTag(state,lessonId){
+  if(!lessonId)return null;
+  const l=(state.lessons||[]).find(x=>x.id===lessonId);
+  if(!l)return "Lesson no longer available";
+  return `${l.subject} · Mod ${l.module} L${l.lessonNumber} · ${l.title}`;
+}
 
 function SeatingView({state,setState,toast}){
   const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
@@ -2213,6 +2257,11 @@ function SeatingView({state,setState,toast}){
   const canvasRef=useRef(null);
   const drag=useRef(null); // {id,moved,startX,startY}
   const today=todayISO();
+  const sched=useMemo(()=>computeSchedule(state),[state]);
+  const todaysBySubject=sched.byDate[today]||{};
+  const availSubjects=SUBJECTS.filter(s=>todaysBySubject[s]);
+  const [recSubject,setRecSubject]=useState(null);
+  useEffect(()=>{setRecSubject(prev=>(prev&&availSubjects.includes(prev))?prev:(availSubjects[0]||null));},[availSubjects.join("|")]);
 
   const studById=useMemo(()=>{const m={};state.students.forEach(s=>m[s.id]=s);return m;},[state.students]);
   const roster=useMemo(()=>state.students.filter(s=>s.section===section),[state.students,section]);
@@ -2261,7 +2310,7 @@ function SeatingView({state,setState,toast}){
   const commitNote=()=>{
     const info=noteFor;const txt=noteText.trim();
     if(saveTimer.current){clearTimeout(saveTimer.current);saveTimer.current=null;}
-    if(info&&txt){toast.checkpoint&&toast.checkpoint();setEv(info.sid,c=>({...c,notes:[...c.notes,{id:uid(),text:txt,ts:Date.now(),kind:info.kind}]}));}
+    if(info&&txt){toast.checkpoint&&toast.checkpoint();const lid=recSubject?todaysBySubject[recSubject]:null;setEv(info.sid,c=>({...c,notes:[...c.notes,{id:uid(),text:txt,ts:Date.now(),kind:info.kind,lessonId:lid||null}]}));}
     setNoteFor(null);setNoteText("");setActive(null);
   };
   commitRef.current=commitNote;
@@ -2344,6 +2393,20 @@ function SeatingView({state,setState,toast}){
         <button className="btn btn-primary btn-sm" style={{marginLeft:"auto"}} onClick={()=>window.print()}><I d={ic.file} s={14}/> Print</button>
       </>}
     </div>
+
+    {mode==="teach"&&<div className="no-print" style={{marginBottom:14}}>
+      {availSubjects.length>1?(
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,color:"var(--muted)"}}>Recording for:</span>
+          <div className="st-seg">{availSubjects.map(s=><button key={s} className={"btn btn-sm"+(recSubject===s?" btn-primary":" btn-ghost")} onClick={()=>setRecSubject(s)}>{s}</button>)}</div>
+          {recSubject&&<span style={{fontSize:11.5,color:"var(--muted)"}}>{lessonTag(state,todaysBySubject[recSubject])}</span>}
+        </div>
+      ):availSubjects.length===1?(
+        <div style={{fontSize:12,color:"var(--muted)"}}>Recording for: <b style={{color:"var(--ink-2)",fontWeight:600}}>{lessonTag(state,todaysBySubject[availSubjects[0]])}</b></div>
+      ):(
+        <div style={{fontSize:12,color:"var(--muted-2)"}}>No lesson scheduled today — observations won't be linked to a specific lesson.</div>
+      )}
+    </div>}
 
     {mode==="arrange"&&<div className="no-print" style={{marginBottom:14}}>
       <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:10}}>
@@ -2452,10 +2515,13 @@ function SeatSnapshot({student,ev,state,onClose,onDelNote,lvlOf}){
         <div className="p-sec"><div className="p-sec-t">Instructional focus</div>{focus?<div className="p-body" style={{display:"flex",gap:8,alignItems:"center"}}><LvBadge lv={focus.level}/><b style={{fontFamily:"ui-monospace,monospace",fontSize:12.5}}>{focus.code}</b> {focus.desc}</div>:<div className="p-body" style={{color:"var(--muted)"}}>No growth-area standards recorded yet.</div>}</div>
 
         <div className="p-sec"><div className="p-sec-t">Today's observations</div>
-          {ev.notes.length?ev.notes.map(n=>(<div key={n.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
-            <span className="pill pill-gray" style={{fontSize:10}}>{n.kind==="work"?"work":"note"}</span>
-            <span style={{flex:1,fontSize:13.5,color:"var(--ink-2)"}}>{n.text}</span>
-            <button className="mini-x" style={{width:26,height:26,flex:"0 0 26px"}} onClick={()=>onDelNote(n.id)}><I d={ic.x} s={12}/></button>
+          {ev.notes.length?ev.notes.map(n=>(<div key={n.id} style={{padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
+              <span className="pill pill-gray" style={{fontSize:10}}>{n.kind==="work"?"work":"note"}</span>
+              {n.lessonId&&<span style={{fontSize:11,color:"var(--olive-deep)",fontWeight:600}}>{lessonTag(state,n.lessonId)}</span>}
+              <button className="mini-x" style={{width:24,height:24,flex:"0 0 24px",marginLeft:"auto"}} onClick={()=>onDelNote(n.id)}><I d={ic.x} s={12}/></button>
+            </div>
+            <div style={{fontSize:13.5,color:"var(--ink-2)"}}>{n.text}</div>
           </div>)):<div className="p-body" style={{color:"var(--muted)"}}>Nothing captured today. Tap the desk to add a quick note.</div>}
           {ev.followup&&<div className="pill pill-terra" style={{marginTop:8}}>Follow-up flagged</div>}
           {ev.completed&&!ev.followup&&<div className="pill pill-olive" style={{marginTop:8}}>Worked with today</div>}
@@ -2799,7 +2865,7 @@ function searchEverything(state,qRaw){
     const dayRec=state.evidence[day]||{};
     Object.keys(dayRec).forEach(sid=>{
       (dayRec[sid].notes||[]).forEach(n=>{
-        if(n.text.toLowerCase().includes(q)){const stu=state.students.find(x=>x.id===sid);observations.push({studentId:sid,title:stu?stu.name:"Student",subtitle:`${pretty(day)} · ${n.text}`});}
+        if(n.text.toLowerCase().includes(q)){const stu=state.students.find(x=>x.id===sid);const lt=n.lessonId?lessonTag(state,n.lessonId):null;observations.push({studentId:sid,title:stu?stu.name:"Student",subtitle:`${pretty(day)}${lt?" · "+lt:""} — ${n.text}`});}
       });
     });
   });
@@ -3063,35 +3129,86 @@ function SubPlansView({state,setState,toast}){
 /* ============================================================
    12m. ASSESSMENT SCORES  (STAR / SBA / custom interims, teacher-set colors)
 ============================================================ */
-function scoreColor(score,def){
-  if(!def)return{bg:"var(--surface-2)",fg:"var(--ink-2)"};
-  if(score>=def.bands.green)return{bg:"var(--olive-soft)",fg:"var(--olive-deep)"};
-  if(score>=def.bands.gold)return{bg:"#F1E6D3",fg:"#8B6A3C"};
-  return{bg:"var(--terra-soft)",fg:"var(--terra-deep)"};
+const LEVEL_COLORS={
+  terra:{bg:"var(--terra-soft)",fg:"var(--terra-deep)"},
+  gold:{bg:"#F1E6D3",fg:"#8B6A3C"},
+  olive:{bg:"var(--olive-soft)",fg:"var(--olive-deep)"},
+  oliveDeep:{bg:"var(--olive)",fg:"#fff"},
+};
+const COLOR_CYCLE=["terra","gold","olive","oliveDeep"];
+const STAR_WINDOWS=["Fall","Winter","Winter 2","Spring"];
+function levelsForWindow(def,windowLabel){
+  if(def&&def.windows){
+    const w=(windowLabel||"").trim().toLowerCase();
+    const keys=Object.keys(def.windows);
+    const exact=keys.find(k=>k===w);
+    if(exact)return def.windows[exact];
+    const bySpecificity=[...keys].sort((a,b)=>b.length-a.length); // "winter 2" before "winter"
+    const partial=bySpecificity.find(k=>w.includes(k));
+    if(partial)return def.windows[partial];
+  }
+  return(def&&def.levels)||[];
 }
-function ScoreBadge({score,def}){const c=scoreColor(score,def);return<span style={{display:"inline-flex",minWidth:34,padding:"3px 9px",borderRadius:999,background:c.bg,color:c.fg,fontWeight:700,fontSize:12,justifyContent:"center"}}>{score}</span>;}
+function scoreLevel(score,def,windowLabel){
+  const levels=levelsForWindow(def,windowLabel);
+  if(!levels.length)return null;
+  const sorted=[...levels].sort((a,b)=>a.min-b.min);
+  let found=sorted[0];
+  sorted.forEach(lv=>{if(score>=lv.min)found=lv;});
+  return found;
+}
+function scoreColor(score,def,windowLabel){
+  const lv=def?scoreLevel(score,def,windowLabel):null;
+  if(!lv)return{bg:"var(--surface-2)",fg:"var(--ink-2)"};
+  return LEVEL_COLORS[lv.color]||LEVEL_COLORS.terra;
+}
+function ScoreBadge({score,def,windowLabel,showLabel}){
+  const c=scoreColor(score,def,windowLabel);
+  const lv=def?scoreLevel(score,def,windowLabel):null;
+  return(<span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+    <span style={{display:"inline-flex",minWidth:34,padding:"3px 9px",borderRadius:999,background:c.bg,color:c.fg,fontWeight:700,fontSize:12,justifyContent:"center"}}>{score}</span>
+    {showLabel&&lv&&<span style={{fontSize:11,color:c.fg,fontWeight:600}}>{lv.label}</span>}
+  </span>);
+}
 
+const COLOR_SWATCH_LABEL={terra:"Red",gold:"Gold",olive:"Green",oliveDeep:"Deep green"};
 function TestDefModal({initial,onClose,onSave,onDelete}){
   const [name,setName]=useState(initial?initial.name:"");
-  const [gold,setGold]=useState(initial?initial.bands.gold:"");
-  const [green,setGreen]=useState(initial?initial.bands.green:"");
-  const valid=name.trim()&&gold!==""&&green!==""&&!isNaN(gold)&&!isNaN(green);
+  const [levels,setLevels]=useState(()=>initial&&initial.levels?initial.levels.map(l=>({...l,min:String(l.min)})):[
+    {label:"Level 1",min:"0",color:"terra"},
+    {label:"Level 2",min:"",color:"gold"},
+    {label:"Level 3",min:"",color:"olive"},
+  ]);
+  const hasWindows=!!(initial&&initial.windows);
+  const updateLevel=(i,key,val)=>setLevels(ls=>ls.map((l,idx)=>idx===i?{...l,[key]:val}:l));
+  const addLevel=()=>setLevels(ls=>ls.length>=5?ls:[...ls,{label:`Level ${ls.length+1}`,min:"",color:COLOR_CYCLE[ls.length%COLOR_CYCLE.length]}]);
+  const removeLevel=i=>setLevels(ls=>ls.length<=2?ls:ls.filter((_,idx)=>idx!==i));
+  const valid=name.trim()&&levels.length>=2&&levels.every(l=>l.label.trim()&&l.min!==""&&!isNaN(l.min));
+  const submit=()=>{
+    const cleanLevels=levels.map(l=>({label:l.label.trim(),min:+l.min,color:l.color})).sort((a,b)=>a.min-b.min);
+    onSave({...(initial||{}),id:initial?initial.id:uid(),name:name.trim(),levels:cleanLevels});
+  };
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div className="modal" style={{maxWidth:440}}>
+    <div className="modal" style={{maxWidth:520}}>
       <div className="modal-head"><div><div className="eyebrow" style={{marginBottom:2}}>{initial?"Edit test":"New test"}</div><h2 style={{fontSize:18}}>{initial?initial.name:"Define a test"}</h2></div>
         <button className="panel-close" style={{position:"static"}} onClick={onClose}><I d={ic.x}/></button></div>
       <div className="modal-body">
         <Field label="Test name"><input className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Module 3 Interim"/></Field>
-        <p style={{fontSize:12.5,color:"var(--muted)",marginTop:-4,marginBottom:14,lineHeight:1.5}}>Set your own color bands. A score at or above the green number is green; at or above the gold number (but below green) is gold; anything lower is red.</p>
-        <div className="grid2">
-          <Field label="Gold starts at"><input className="input" type="number" value={gold} onChange={e=>setGold(e.target.value)}/></Field>
-          <Field label="Green starts at"><input className="input" type="number" value={green} onChange={e=>setGreen(e.target.value)}/></Field>
-        </div>
+        {hasWindows&&<div className="hint" style={{marginTop:-6,marginBottom:14}}>This test uses different cut scores per testing window (Fall/Winter/Winter 2/Spring), set from your school's benchmarks. Editing here only changes the fallback scale used when no window is set — the per-window scales stay as they are.</div>}
+        <p style={{fontSize:12.5,color:"var(--muted)",marginTop:hasWindows?0:-4,marginBottom:14,lineHeight:1.5}}>Add a band for each level your school uses. A score counts toward whichever band's number it meets or exceeds, up to the next band.</p>
+        {levels.map((l,i)=>(<div key={i} className="linkrow" style={{alignItems:"center",marginBottom:8}}>
+          <input className="input" style={{flex:"1 1 120px"}} placeholder="Label" value={l.label} onChange={e=>updateLevel(i,"label",e.target.value)}/>
+          <input className="input" style={{flex:"0 0 90px"}} type="number" placeholder="Starts at" value={l.min} onChange={e=>updateLevel(i,"min",e.target.value)}/>
+          <select className="select" style={{flex:"0 0 118px"}} value={l.color} onChange={e=>updateLevel(i,"color",e.target.value)}>{COLOR_CYCLE.map(c=><option key={c} value={c}>{COLOR_SWATCH_LABEL[c]}</option>)}</select>
+          <span style={{width:20,height:20,borderRadius:6,background:LEVEL_COLORS[l.color].bg,border:"1px solid var(--border-strong)",flex:"0 0 20px"}}/>
+          {levels.length>2&&<button className="mini-x" onClick={()=>removeLevel(i)}><I d={ic.x} s={13}/></button>}
+        </div>))}
+        {levels.length<5&&<button className="add-link" onClick={addLevel}><I d={ic.plus} s={13}/> Add a band</button>}
       </div>
       <div className="modal-foot">
         {initial&&<button className="btn btn-ghost" style={{marginRight:"auto",color:"var(--terra-deep)"}} onClick={()=>onDelete(initial.id)}>Delete test</button>}
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!valid} style={!valid?{opacity:.5}:null} onClick={()=>onSave({id:initial?initial.id:uid(),name:name.trim(),bands:{gold:+gold,green:+green}})}>Save</button>
+        <button className="btn btn-primary" disabled={!valid} style={!valid?{opacity:.5}:null} onClick={submit}>Save</button>
       </div>
     </div>
   </div>);
@@ -3155,7 +3272,7 @@ function TestScoresView({state,setState,toast}){
             {scoresFor(student.id).length?(<div className="card" style={{padding:0}}>
               {scoresFor(student.id).map(t=>{const def=defById(t.testDefId);
                 return(<div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>
-                  <ScoreBadge score={t.score} def={def}/>
+                  <ScoreBadge score={t.score} def={def} windowLabel={t.window} showLabel/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13.5}}>{def?def.name:"Unknown test"}{t.subject?" · "+t.subject:""}</div>
                     <div style={{fontSize:11.5,color:"var(--muted)"}}>{t.window||pretty(t.date)}</div>
@@ -3187,7 +3304,7 @@ function TestScoresView({state,setState,toast}){
           return(<div className="card" key={def.id} style={{padding:0,marginBottom:16,overflow:"hidden"}}>
             <div style={{padding:"12px 18px",background:"var(--surface-2)",borderBottom:"1px solid var(--border)",fontWeight:600,fontSize:13.5}}>{def.name} <span style={{fontWeight:500,color:"var(--muted)"}}>· most recent score</span></div>
             {sorted.map(({s,latest})=>(<div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 18px",borderBottom:"1px solid var(--border)"}}>
-              <ScoreBadge score={latest.score} def={def}/><span style={{flex:1,fontSize:13,fontWeight:550}}>{s.name}</span><span style={{fontSize:11.5,color:"var(--muted)"}}>{latest.window||pretty(latest.date)}</span>
+              <ScoreBadge score={latest.score} def={def} windowLabel={latest.window}/><span style={{flex:1,fontSize:13,fontWeight:550}}>{s.name}</span><span style={{fontSize:11.5,color:"var(--muted)"}}>{latest.window||pretty(latest.date)}</span>
             </div>))}
           </div>);
         })}
@@ -3206,6 +3323,7 @@ function AddScoreModal({student,defs,onClose,onSave}){
   const [win,setWindow]=useState("");
   const [date,setDate]=useState(todayISO());
   const [score,setScore]=useState("");
+  const activeDef=defs.find(d=>d.id===testDefId);
   const valid=testDefId&&score!==""&&!isNaN(score);
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="modal" style={{maxWidth:460}}>
@@ -3218,7 +3336,9 @@ function AddScoreModal({student,defs,onClose,onSave}){
           <Field label="Score"><input className="input" type="number" value={score} onChange={e=>setScore(e.target.value)} autoFocus/></Field>
         </div>
         <div className="grid2">
-          <Field label="Window" hint='e.g. "Fall", "Spring 2026"'><input className="input" value={win} onChange={e=>setWindow(e.target.value)}/></Field>
+          <Field label="Window">{activeDef&&activeDef.windows?(
+            <select className="select" value={win} onChange={e=>setWindow(e.target.value)}><option value="">Choose…</option>{STAR_WINDOWS.map(w=><option key={w}>{w}</option>)}</select>
+          ):(<input className="input" placeholder='e.g. "Fall", "Spring 2026"' value={win} onChange={e=>setWindow(e.target.value)}/>)}</Field>
           <Field label="Date"><input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></Field>
         </div>
       </div>
@@ -3258,7 +3378,9 @@ function BulkScoreEntry({state,defs,onImport}){
         <Field label="Subject"><select className="select" value={subject} onChange={e=>setSubject(e.target.value)}>{["Math","ELA","Science","Other"].map(s=><option key={s}>{s}</option>)}</select></Field>
       </div>
       <div className="grid2">
-        <Field label="Window" hint='e.g. "Fall 2026", "Incoming — Spring 2026"'><input className="input" value={win} onChange={e=>setWindow(e.target.value)}/></Field>
+        <Field label="Window">{defs.find(d=>d.id===testDefId)&&defs.find(d=>d.id===testDefId).windows?(
+          <select className="select" value={win} onChange={e=>setWindow(e.target.value)}><option value="">Choose…</option>{STAR_WINDOWS.map(w=><option key={w}>{w}</option>)}</select>
+        ):(<input className="input" placeholder='e.g. "Fall 2026", "Incoming — Spring 2026"' value={win} onChange={e=>setWindow(e.target.value)}/>)}</Field>
         <Field label="Date"><input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></Field>
       </div>
       <Field label="Paste names and scores" hint='One student per line — "Name, Score" (or Name then a tab, then the score)' full>
@@ -3446,4 +3568,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
