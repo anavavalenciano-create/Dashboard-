@@ -550,6 +550,7 @@ const EMPTY_STATE={
   ],
   testScores:[],    // [{id,studentId,testDefId,subject,window,date,score}]
   rosterSort:"first", // 'first' | 'last' — how student lists alphabetize
+  scheduleAnchors:{}, // subject -> {date, lessonId} — "catch up" points for late-entered lesson banks
 };
 const LS_KEY="teacher-os-state-v1";
 
@@ -615,11 +616,18 @@ function computeSchedule(state){
   SUBJECTS.forEach(sub=>{
     const pins=state.pins[sub]||{};
     const pinnedIds=new Set(Object.entries(pins).filter(([d])=>instructional.includes(d)).map(([,id])=>id));
-    const autos=seqOf(state.lessons,sub).filter(l=>!pinnedIds.has(l.id));
+    let autos=seqOf(state.lessons,sub).filter(l=>!pinnedIds.has(l.id));
+    const anchor=(state.scheduleAnchors||{})[sub];
+    let anchorDate=null;
+    if(anchor&&anchor.date&&anchor.lessonId){
+      const idx=autos.findIndex(l=>l.id===anchor.lessonId);
+      if(idx>=0){autos=autos.slice(idx);anchorDate=anchor.date;}
+    }
     const map={};let ai=0;
     instructional.forEach(date=>{
-      if(pins[date]){map[date]=pins[date];}
-      else if(ai<autos.length){map[date]=autos[ai].id;ai++;}
+      if(pins[date]){map[date]=pins[date];return;}
+      if(anchorDate&&date<anchorDate)return; // before the catch-up point: leave blank, nothing was actually taught there
+      if(ai<autos.length){map[date]=autos[ai].id;ai++;}
     });
     out.bySubjectDate[sub]=map;
     out.overflow[sub]=autos.slice(ai).map(l=>l.id);
@@ -1001,6 +1009,7 @@ function Planner({state,sched,setState,onOpen,toast}){
   const [drag,setDrag]=useState(null);       // {subject,fromDate}
   const [dropDate,setDropDate]=useState(null);
   const [moveOpen,setMoveOpen]=useState(false);
+  const [catchUpOpen,setCatchUpOpen]=useState(false);
   const lessonById=id=>state.lessons.find(l=>l.id===id);
   const cY=parse(cursor).getFullYear(),cM=parse(cursor).getMonth();
   const hasYear=!!state.schoolYear.firstDay;
@@ -1059,6 +1068,7 @@ function Planner({state,sched,setState,onOpen,toast}){
         <button className="icon-btn" onClick={()=>setCursor(iso(new Date(cY,cM+1,1)))}><I d={ic.chevR}/></button>
       </div>
       <button className="btn btn-terra btn-sm" onClick={()=>setMoveOpen(true)}><I d={ic.forward} s={14}/> Move lessons forward</button>
+      <button className="btn btn-sm" onClick={()=>setCatchUpOpen(true)}><I d={ic.target} s={14}/> Catch up schedule</button>
       <div className="legend">
         {SUBJECTS.map(s=><span className="li" key={s}><span className="dot" style={{width:9,height:9,borderRadius:2,background:subMeta(s).accent}}/> {s}</span>)}
       </div>
@@ -1117,6 +1127,7 @@ function Planner({state,sched,setState,onOpen,toast}){
     )}
 
     {moveOpen&&<MoveForward state={state} sched={sched} setState={setState} onClose={()=>setMoveOpen(false)} toast={toast}/>}
+    {catchUpOpen&&<CatchUpModal state={state} sched={sched} setState={setState} onClose={()=>setCatchUpOpen(false)} toast={toast}/>}
   </div>);
 }
 
@@ -1182,6 +1193,78 @@ function MoveForward({state,sched,setState,onClose,toast}){
       <div className="modal-foot">
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-terra" disabled={!canDo} style={!canDo?{opacity:.5}:null} onClick={confirm}>Shift lessons forward</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ---- Catch up schedule (for late-entered lesson banks) ---- */
+function CatchUpModal({state,sched,setState,onClose,toast}){
+  const t=todayISO();
+  const subjects=SUBJECTS.filter(s=>state.lessons.some(l=>l.subject===s));
+  const [subject,setSubject]=useState(subjects[0]||"Math");
+  const [date,setDate]=useState(t);
+  const [lessonId,setLessonId]=useState("");
+  const lessonById=id=>state.lessons.find(l=>l.id===id);
+  const currentToday=(sched.byDate[t]||{})[subject];
+
+  const seq=useMemo(()=>seqOf(state.lessons,subject),[state.lessons,subject]);
+  const grouped=useMemo(()=>{
+    const byMod={};seq.forEach(l=>{const k=`Q${l.quarter} · Module ${l.module}`;(byMod[k]=byMod[k]||[]).push(l);});
+    return byMod;
+  },[seq]);
+
+  const preview=useMemo(()=>{
+    if(!lessonId)return null;
+    const sim={...state,scheduleAnchors:{...(state.scheduleAnchors||{}),[subject]:{date,lessonId}}};
+    const after=computeSchedule(sim);
+    const chosen=lessonById(lessonId);
+    const nextFew=sched.instructional.filter(d=>d>=date).slice(0,4).map(d=>{
+      const lid=(after.byDate[d]||{})[subject];
+      return{date:d,lesson:lid?lessonById(lid):null};
+    });
+    return{chosen,nextFew};
+  },[lessonId,date,subject,state,sched]);
+
+  const confirm=()=>{
+    if(!lessonId)return;
+    toast.checkpoint&&toast.checkpoint();
+    setState(p=>({...p,scheduleAnchors:{...(p.scheduleAnchors||{}),[subject]:{date,lessonId}}}));
+    onClose();
+    toast.show(`${subject} schedule caught up starting ${pretty(date)}`);
+  };
+
+  return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:560}}>
+      <div className="modal-head">
+        <div><div className="eyebrow" style={{marginBottom:2}}>Scheduler</div><h2 style={{fontSize:18}}>Catch up schedule</h2></div>
+        <button className="panel-close" style={{position:"static"}} onClick={onClose}><I d={ic.x}/></button>
+      </div>
+      <div className="modal-body">
+        <p style={{color:"var(--muted)",fontSize:13,marginTop:0}}>Tell it what you're actually teaching as of a given day, and everything from there flows correctly in order. Days before this stay blank — the planner won't guess what happened before you caught up.</p>
+        <div className="grid2">
+          <Field label="Subject"><select className="select" value={subject} onChange={e=>{setSubject(e.target.value);setLessonId("");}}>{subjects.map(s=><option key={s}>{s}</option>)}</select></Field>
+          <Field label="Starting day"><input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></Field>
+        </div>
+        <Field label="We are actually on…">
+          <select className="select" value={lessonId} onChange={e=>setLessonId(e.target.value)}>
+            <option value="">Choose a lesson…</option>
+            {Object.entries(grouped).map(([mod,lessons])=><optgroup label={mod} key={mod}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.lessonNumber} — {l.title}</option>)}</optgroup>)}
+          </select>
+        </Field>
+        {currentToday&&<div className="hint">Currently, {pretty(t)} is showing {lessonById(currentToday)?lessonById(currentToday).title:"a lesson"} — that's almost certainly wrong if you're just catching up now.</div>}
+
+        {preview&&<div style={{marginTop:14}}>
+          <div className="form-sec-t" style={{marginTop:8}}>Preview</div>
+          {preview.nextFew.map((r,i)=>(<div className="diff-row" key={i}>
+            <span style={{minWidth:76,color:"var(--muted)",fontSize:12.5}}>{pretty(r.date)}</span>
+            <span style={{flex:1,fontWeight:550,fontSize:13}}>{r.lesson?r.lesson.title:"—"}</span>
+          </div>))}
+        </div>}
+      </div>
+      <div className="modal-foot">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!lessonId} style={!lessonId?{opacity:.5}:null} onClick={confirm}>Update schedule</button>
       </div>
     </div>
   </div>);
