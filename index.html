@@ -829,12 +829,19 @@ function ResLinks({title,items}){
       <I d={ic.file}/><span>{r.label||r.url}</span><I d={ic.ext} s={14}/></a>))}
   </div>);
 }
-function LessonMasteryModal({lesson,state,setState,toast,onClose}){
+function LessonMasteryModal({lesson,lessonDate,state,setState,toast,onClose}){
   const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
   const [section,setSection]=useState("All");
   const students=state.students.filter(s=>section==="All"||s.section===section);
   const standards=lesson.standards||[];
-  const cycleLevel=(sid,std)=>{toast.checkpoint&&toast.checkpoint();bumpMasteryLevel(setState,sid,std);};
+  const isBackdated=lessonDate&&lessonDate!==todayISO();
+  const displayMastery=useMemo(()=>{
+    if(!isBackdated)return state.mastery;
+    const m={};
+    students.forEach(s=>{m[s.id]={};standards.forEach(std=>{const lvl=masteryAsOf(state,s.id,normStd(std),lessonDate);if(lvl!==null)m[s.id][std]=lvl;});});
+    return m;
+  },[isBackdated,lessonDate,students,standards,state.masteryHistory,state.mastery]);
+  const cycleLevel=(sid,std)=>{toast.checkpoint&&toast.checkpoint();bumpMasteryLevel(setState,sid,std,lessonDate);};
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="modal" style={{maxWidth:720}}>
       <div className="modal-head"><div><div className="eyebrow" style={{marginBottom:2}}>Catch up mastery</div><h2 style={{fontSize:18}}>{lesson.title}</h2></div>
@@ -844,11 +851,12 @@ function LessonMasteryModal({lesson,state,setState,toast,onClose}){
           <div className="empty"><div className="empty-ic"><I d={ic.grid} s={24}/></div><h3>No standards tagged</h3><p>Add a standard to this lesson first (Edit → Standards) so there's something to log mastery against.</p></div>
         ):(<>
           <p style={{fontSize:13,color:"var(--muted)",marginTop:0}}>Tap a cell to cycle through mastery levels for just this lesson's standard{standards.length>1?"s":""} — same as the main mastery grid, just focused on this lesson.</p>
+          {isBackdated&&<div className="hint" style={{marginBottom:12,color:"var(--olive-deep)",fontWeight:600}}>Logging for {prettyLong(lessonDate)} — this won't overwrite anything more recent.</div>}
           {sections.length>1&&<div className="filters" style={{marginBottom:14}}>
             <button className={"fchip"+(section==="All"?" on":"")} onClick={()=>setSection("All")}>All classes</button>
             {sections.map(s=><button key={s} className={"fchip"+(section===s?" on":"")} onClick={()=>setSection(s)}>{s}</button>)}
           </div>}
-          <MasteryGrid students={students} standards={standards} mastery={state.mastery} cycle={cycleLevel}/>
+          <MasteryGrid students={students} standards={standards} mastery={displayMastery} cycle={cycleLevel}/>
         </>)}
       </div>
       <div className="modal-foot"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
@@ -920,7 +928,7 @@ function LessonPanel({lesson,dateInfo,dateVal,prep,onPrep,onClose,onEdit,state,s
       </div>
     </div>
     {showReflect&&<ReflectionModal lesson={lesson} defaultDate={dateVal||todayISO()} onClose={()=>setShowReflect(false)} onSave={addReflection}/>}
-    {showMastery&&<LessonMasteryModal lesson={lesson} state={state} setState={setState} toast={toast} onClose={()=>setShowMastery(false)}/>}
+    {showMastery&&<LessonMasteryModal lesson={lesson} lessonDate={dateVal} state={state} setState={setState} toast={toast} onClose={()=>setShowMastery(false)}/>}
   </>);
 }
 function ReflectionModal({lesson,defaultDate,onClose,onSave}){
@@ -1918,18 +1926,21 @@ function extractStdCode(raw){
 }
 function normStd(code){return extractStdCode(code).toLowerCase().replace(/\s+/g,"").replace(/\.([a-c])\.(\d)/,".$2");}
 // bump a student's mastery level, logging one history entry per day (collapses repeated taps on the same day)
-function bumpMasteryLevel(setState,studentId,code){
-  const today=todayISO();
+function bumpMasteryLevel(setState,studentId,code,forDate){
+  const targetDate=forDate||todayISO();
   setState(p=>{
-    const mastery={...p.mastery,[studentId]:{...(p.mastery[studentId]||{})}};
-    const newLevel=((mastery[studentId][code]||0)+1)%5;
-    mastery[studentId][code]=newLevel;
     const hist={...(p.masteryHistory||{})};
     const studHist={...(hist[studentId]||{})};
     const list=studHist[code]?[...studHist[code]]:[];
-    if(list.length&&list[list.length-1].date===today)list[list.length-1]={date:today,level:newLevel};
-    else list.push({date:today,level:newLevel});
+    const idx=list.findIndex(e=>e.date===targetDate);
+    const curForTarget=idx>=0?list[idx].level:((p.mastery[studentId]||{})[code]||0);
+    const newLevel=(curForTarget+1)%5;
+    if(idx>=0)list[idx]={date:targetDate,level:newLevel};else list.push({date:targetDate,level:newLevel});
     studHist[code]=list;hist[studentId]=studHist;
+    // "current" mastery always reflects whichever logged date is most recent — catching up on an older day should never regress today's known level
+    const latest=[...list].sort((a,b)=>a.date.localeCompare(b.date)).pop();
+    const mastery={...p.mastery,[studentId]:{...(p.mastery[studentId]||{})}};
+    mastery[studentId][code]=latest.level;
     return{...p,mastery,masteryHistory:hist};
   });
 }
