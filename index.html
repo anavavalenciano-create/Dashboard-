@@ -560,6 +560,7 @@ const EMPTY_STATE={
   dismissedGoalReminders:{}, // dateISO -> [goalId] — reminders quieted for just that day
   masteryHistory:{}, // studentId -> code -> [{date,level}] — one entry per day touched, for week-over-week comparison
   weeklyReportNotes:{}, // "weekMonday|standardNorm" -> suggested next-steps text
+  weeklyReportDayNotes:{}, // dateISO -> suggested next-steps text, for the day-by-day Math view
 };
 const LS_KEY="teacher-os-state-v1";
 
@@ -1944,6 +1945,19 @@ function masteryAsOf(state,studentId,standardNorm,dateISO){
   });
   return best?best.level:null;
 }
+// level recorded on this EXACT date only (not carried forward) — for a fresh "just today" snapshot
+function masteryOnExactDay(state,studentId,standardNorm,dateISO){
+  const studHist=(state.masteryHistory||{})[studentId]||{};
+  let found=null;
+  Object.keys(studHist).forEach(code=>{
+    const n=normStd(code);
+    if(n===standardNorm||n.startsWith(standardNorm+".")||standardNorm.startsWith(n+".")){
+      const entry=studHist[code].find(e=>e.date===dateISO);
+      if(entry)found=entry.level;
+    }
+  });
+  return found;
+}
 // the most recently completed Monday–Friday span strictly before the given date
 function lastFullWeek(today){
   let d=addDays(today,-1);
@@ -2005,6 +2019,46 @@ function DailyStackedBars({dailyBreakdown,avgPct,standardCode}){
   </div>);
 }
 
+function DayColumnCard({day,dayName,dayNotes,onNotesChange}){
+  const barH=64;
+  const renderBar=(counts,total,label)=>(
+    <div style={{marginBottom:9}}>
+      <div style={{fontSize:9.5,color:"var(--muted)",marginBottom:3,fontWeight:600}}>{label}</div>
+      <div style={{width:"100%",height:barH,display:"flex",borderRadius:6,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface-2)"}}>
+        {total>0?[1,2,3,4].map(lv=>{const c=counts[lv];const pct=c/total*100;if(!pct)return null;const meta=M_LEVELS[lv];
+          return<div key={lv} style={{width:pct+"%",background:meta.bg}} title={`${meta.label}: ${c}`}/>;}):<div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"var(--muted-2)"}}>No data</div>}
+      </div>
+    </div>
+  );
+  return(<div className="card" style={{padding:"16px 14px",minWidth:196,flex:"1 1 0"}}>
+    <div style={{fontSize:12,fontWeight:700,letterSpacing:".04em",textTransform:"uppercase",color:"var(--olive-deep)",marginBottom:12,borderBottom:"2px solid var(--olive)",paddingBottom:7}}>{dayName}</div>
+    {!day.lesson?(
+      <div style={{fontSize:12,color:"var(--muted-2)",padding:"24px 0",textAlign:"center"}}>No Math lesson scheduled</div>
+    ):(<>
+      <div style={{fontSize:11.5,lineHeight:1.75,marginBottom:12}}>
+        <div><b>Module:</b> {day.lesson.module}</div>
+        <div><b>Lesson:</b> {day.lesson.lessonNumber} — {day.lesson.title}</div>
+        {day.standardCode&&<div><b>Standard:</b> {day.standardCode}</div>}
+      </div>
+      <div className="p-sec-t" style={{marginBottom:6}}>Class improvement</div>
+      {renderBar(day.bar1.counts,day.bar1.total,"Today's lesson")}
+      {renderBar(day.bar2.counts,day.bar2.total,"Standard trend so far")}
+
+      <div className="p-sec-t" style={{marginTop:10,marginBottom:6}}>What went well</div>
+      {day.reflections.length&&day.reflections.some(r=>r.whatWorked)?day.reflections.map((r,i)=>r.whatWorked&&<div key={i} style={{fontSize:11.5,color:"var(--ink-2)",marginBottom:4}}>• {r.whatWorked}</div>):<div style={{fontSize:11,color:"var(--muted-2)"}}>—</div>}
+
+      <div className="p-sec-t" style={{marginTop:10,marginBottom:6}}>Common misconceptions</div>
+      {day.misconceptions.length?day.misconceptions.map((m,i)=>(<div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+        <span className="pill pill-terra" style={{fontSize:9}}>{m.count}×</span><span style={{fontSize:11,color:"var(--ink-2)"}}>{m.text}</span>
+      </div>)):<div style={{fontSize:11,color:"var(--muted-2)"}}>—</div>}
+
+      <div className="p-sec-t" style={{marginTop:10,marginBottom:6}}>Suggested next steps</div>
+      <textarea className="textarea screen-only" style={{minHeight:56,fontSize:11.5}} value={dayNotes} onChange={e=>onNotesChange(e.target.value)} placeholder="Reteach plan…"/>
+      <div className="print-only" style={{whiteSpace:"pre-wrap",fontSize:11,lineHeight:1.5,color:dayNotes?"var(--ink)":"var(--muted-2)"}}>{dayNotes||"—"}</div>
+    </>)}
+  </div>);
+}
+
 function WeeklyReportView({state,setState,toast}){
   const t=todayISO();
   const [monday,setMonday]=useState(()=>lastFullWeek(t).monday);
@@ -2033,6 +2087,36 @@ function WeeklyReportView({state,setState,toast}){
   },[weekDays,sched]);
 
   const setNextSteps=(norm,text)=>{setState(p=>({...p,weeklyReportNotes:{...(p.weeklyReportNotes||{}),[monday+"|"+norm]:text}}));};
+  const [viewMode,setViewMode]=useState("standard"); // "standard" | "day"
+  const setDayNotes=(date,text)=>{setState(p=>({...p,weeklyReportDayNotes:{...(p.weeklyReportDayNotes||{}),[date]:text}}));};
+
+  // Math-only day-by-day columns: today's fresh snapshot (bar1) vs the standard's running trend (bar2)
+  const buildDayColumn=date=>{
+    const row=sched.byDate[date]||{};
+    const lesson=row["Math"]?lessonById(row["Math"]):null;
+    if(!lesson)return{date,lesson:null};
+    const rawStd=(lesson.standards||[])[0];
+    const norm=rawStd?normStd(rawStd):null;
+    const bar1Counts=[0,0,0,0,0];let bar1Total=0;
+    const bar2Counts=[0,0,0,0,0];let bar2Total=0;
+    if(norm){
+      roster.forEach(s=>{
+        const exact=masteryOnExactDay(state,s.id,norm,date);
+        if(exact===null)bar1Counts[0]++;else{bar1Counts[exact]++;bar1Total++;}
+        const cum=masteryAsOf(state,s.id,norm,date);
+        if(cum===null)bar2Counts[0]++;else{bar2Counts[cum]++;bar2Total++;}
+      });
+    }
+    const reflections=(state.lessonReflections||[]).filter(r=>r.lessonId===lesson.id&&r.date===date);
+    const miscCounts={};
+    const dayRec=(state.evidence||{})[date]||{};
+    roster.forEach(s=>{(dayRec[s.id]?.notes||[]).forEach(n=>{
+      if(n.kind!=="misconception"||n.lessonId!==lesson.id)return;
+      const key=n.text.trim().toLowerCase();miscCounts[key]=miscCounts[key]||{text:n.text.trim(),count:0};miscCounts[key].count++;
+    });});
+    return{date,lesson,standardCode:rawStd?extractStdCode(rawStd):null,bar1:{counts:bar1Counts,total:bar1Total},bar2:{counts:bar2Counts,total:bar2Total},reflections,misconceptions:Object.values(miscCounts).sort((a,b)=>b.count-a.count)};
+  };
+  const dayColumns=useMemo(()=>weekDays.map(buildDayColumn),[weekDays,roster,state.masteryHistory,state.lessonReflections,state.evidence,state.lessons,sched]);
 
   const buildSection=norm=>{
     // mastery movement
@@ -2093,6 +2177,10 @@ function WeeklyReportView({state,setState,toast}){
       <button className="icon-btn" onClick={()=>setMonday(addDays(monday,7))}><I d={ic.chevR}/></button>
       <button className="btn btn-sm" onClick={()=>setMonday(lastFullWeek(t).monday)}>Last full week</button>
       <button className="btn btn-sm" onClick={()=>setMonday(currentWeekMonday(t))}>This week</button>
+      <div className="st-seg">
+        <button className={"btn btn-sm"+(viewMode==="standard"?" btn-primary":" btn-ghost")} onClick={()=>setViewMode("standard")}>By standard</button>
+        <button className={"btn btn-sm"+(viewMode==="day"?" btn-primary":" btn-ghost")} onClick={()=>setViewMode("day")}>By day (Math)</button>
+      </div>
       {sections.length>0&&<div className="st-seg">{["All",...sections].map(s=><button key={s} className={"btn btn-sm"+(scope===s?" btn-primary":" btn-ghost")} onClick={()=>setScope(s)}>{s==="All"?"All classes":s}</button>)}</div>}
       <button className="btn btn-primary btn-sm" style={{marginLeft:"auto"}} onClick={()=>window.print()}><I d={ic.file} s={14}/> Print</button>
     </div>
@@ -2103,7 +2191,8 @@ function WeeklyReportView({state,setState,toast}){
         <div style={{fontSize:12.5,color:"var(--muted)",marginTop:2}}>{pretty(monday)} – {pretty(friday)} · {scope==="All"?"All classes":scope} · Mrs. Nava</div>
       </div>
 
-      {!reportSections.length?(<div className="empty"><div className="empty-ic"><I d={ic.trend} s={24}/></div><h3>No standards taught that week</h3><p className="no-print">Tag standards on your lessons so this report has something to summarize.</p></div>):
+      {viewMode==="standard"?(
+        !reportSections.length?(<div className="empty"><div className="empty-ic"><I d={ic.trend} s={24}/></div><h3>No standards taught that week</h3><p className="no-print">Tag standards on your lessons so this report has something to summarize.</p></div>):
         reportSections.map(sec=>(
           <div className="card" key={sec.norm} style={{padding:"20px 22px",marginBottom:18}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
@@ -2142,7 +2231,12 @@ function WeeklyReportView({state,setState,toast}){
             <textarea className="textarea screen-only" style={{minHeight:64}} value={(state.weeklyReportNotes||{})[monday+"|"+sec.norm]||""} onChange={e=>setNextSteps(sec.norm,e.target.value)} placeholder="Reteach plan, small groups, materials needed…"/>
             <div className="print-only" style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.55,color:(state.weeklyReportNotes||{})[monday+"|"+sec.norm]?"var(--ink)":"var(--muted-2)"}}>{(state.weeklyReportNotes||{})[monday+"|"+sec.norm]||"—"}</div>
           </div>
-        ))}
+        ))
+      ):(
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+          {dayColumns.map(day=><DayColumnCard key={day.date} day={day} dayName={["SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"][parse(day.date).getDay()]} dayNotes={(state.weeklyReportDayNotes||{})[day.date]||""} onNotesChange={txt=>setDayNotes(day.date,txt)}/>)}
+        </div>
+      )}
     </div>
   </div>);
 }
