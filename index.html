@@ -1957,24 +1957,41 @@ function lastFullWeek(today){
 /* ============================================================
    12n0. WEEKLY DATA REPORT  (team meeting printout)
 ============================================================ */
-function DailyStackedBars({dailyBreakdown,avgPct}){
-  const barH=130;
+function DailyStackedBars({dailyBreakdown,avgPct,standardCode}){
+  const barH=130;const ctxH=98;
+  const today=todayISO();
   const dayLabel=d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][parse(d).getDay()];
-  return(<div style={{display:"flex",gap:14,alignItems:"flex-end",marginTop:6,marginBottom:8,overflowX:"auto",paddingBottom:4}}>
+  const pctMeets=day=>day.total?Math.round((day.counts[3]+day.counts[4])/day.total*100):null;
+  return(<div style={{display:"flex",gap:16,alignItems:"flex-end",marginTop:6,marginBottom:8,overflowX:"auto",paddingBottom:4}}>
     {dailyBreakdown.map((day,i)=>{
       const taught=!!day.taughtLesson;const total=day.total;
-      return(<div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:80,opacity:taught?1:0.42,flex:"0 0 auto"}}>
-        <div style={{width:44,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface-2)"}}>
+      const isToday=day.date===today;
+      const prevPct=i>0?pctMeets(dailyBreakdown[i-1]):null;
+      const curPct=pctMeets(day);
+      const delta=(isToday&&prevPct!==null&&curPct!==null)?curPct-prevPct:null;
+      return(<div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:118,opacity:taught?1:0.42,flex:"0 0 auto"}}>
+        <div style={{height:ctxH,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",textAlign:"center",maxWidth:116,marginBottom:8}}>
+          {taught&&<>
+            <div style={{fontSize:9.5,fontWeight:700,color:"var(--olive-deep)",letterSpacing:".02em"}}>MOD {day.taughtLesson.module} · L{day.taughtLesson.lessonNumber}</div>
+            <div style={{fontSize:10,fontWeight:600,fontFamily:"ui-monospace,monospace",color:"var(--ink-2)",margin:"2px 0"}}>{standardCode}</div>
+            <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink)",lineHeight:1.25}}>{day.taughtLesson.title}</div>
+            {day.taughtLesson.objective&&<div style={{fontSize:8.5,color:"var(--muted)",lineHeight:1.3,marginTop:3,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{day.taughtLesson.objective}</div>}
+          </>}
+        </div>
+        <div style={{width:48,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",
+          border:isToday?"2px solid var(--sage,#8CA06F)":"1px solid var(--border)",background:"var(--surface-2)",
+          boxShadow:isToday?"0 0 0 3px var(--olive-soft)":"none"}}>
           {total>0&&[1,2,3,4].map(lv=>{const c=day.counts[lv];const pct=c/total*100;if(!pct)return null;const meta=M_LEVELS[lv];
             return<div key={lv} style={{height:pct+"%",background:taught?meta.bg:"var(--muted-2)"}} title={`${meta.label}: ${c}`}/>;})}
         </div>
-        <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink-2)",marginTop:6}}>{dayLabel(day.date)}</div>
-        {taught?(<div style={{fontSize:9,color:"var(--muted)",textAlign:"center",lineHeight:1.3,marginTop:2,maxWidth:78}}>{day.taughtLesson.title}</div>)
-          :(<div style={{fontSize:9,color:"var(--muted-2)",marginTop:2}}>Not taught</div>)}
+        <div style={{fontSize:10.5,fontWeight:700,color:isToday?"var(--olive-deep)":"var(--ink-2)",marginTop:6}}>{dayLabel(day.date)}{isToday?" · Today":""}</div>
+        {!taught&&<div style={{fontSize:9,color:"var(--muted-2)",marginTop:2}}>Not taught</div>}
+        {delta!==null&&<div style={{fontSize:10,fontWeight:700,color:delta>=0?"var(--olive-deep)":"var(--terra-deep)",marginTop:3}}>{delta>=0?"▲":"▼"} {Math.abs(delta)}% vs yesterday</div>}
       </div>);
     })}
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:80,borderLeft:"2px solid var(--border)",paddingLeft:14,marginLeft:2,flex:"0 0 auto"}}>
-      <div style={{width:44,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border-strong)",background:"var(--surface-2)"}}>
+      <div style={{height:ctxH,marginBottom:8}}/>
+      <div style={{width:48,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border-strong)",background:"var(--surface-2)"}}>
         {[1,2,3,4].map(lv=>{const pct=avgPct[lv-1];if(!pct)return null;const meta=M_LEVELS[lv];return<div key={lv} style={{height:pct+"%",background:meta.bg}}/>;})}
       </div>
       <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink)",marginTop:6}}>Overall</div>
@@ -2099,7 +2116,7 @@ function WeeklyReportView({state,setState,toast}){
               </div>
             )}
             {sec.daysWithData>0?(<>
-              <DailyStackedBars dailyBreakdown={sec.dailyBreakdown} avgPct={sec.avgPct}/>
+              <DailyStackedBars dailyBreakdown={sec.dailyBreakdown} avgPct={sec.avgPct} standardCode={sec.code}/>
               <div className="chips" style={{marginBottom:16}}>{M_LEVELS.slice(1).map(l=><span key={l.v} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:10.5,color:"var(--muted)"}}><span style={{width:10,height:10,borderRadius:3,background:l.bg,border:"1px solid "+l.bd,display:"inline-block"}}/>{l.label}</span>)}</div>
             </>):<div style={{marginBottom:16}}/>}
 
