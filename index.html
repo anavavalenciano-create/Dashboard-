@@ -4197,8 +4197,9 @@ function App(){
   // persist (debounced): always local; cloud only when signed in
   useEffect(()=>{
     if(skipSave.current){skipSave.current=false;return;}
-    saveLocal(state);
-    if(synced){const id=setTimeout(()=>{fbDoc.set(state).catch(()=>{});},600);return()=>clearTimeout(id);}
+    const localId=setTimeout(()=>{saveLocal(state);},400);
+    const cloudId=synced?setTimeout(()=>{fbDoc.set(state).catch(()=>{});},600):null;
+    return()=>{clearTimeout(localId);if(cloudId)clearTimeout(cloudId);};
   },[state]);
 
   const sched=useMemo(()=>computeSchedule(state),[state]);
