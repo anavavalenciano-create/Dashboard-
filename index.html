@@ -1950,6 +1950,11 @@ function lastFullWeek(today){
   while(dow(d)!==5)d=addDays(d,-1);
   return{monday:addDays(d,-4),friday:d};
 }
+function currentWeekMonday(today){
+  let d=today;
+  while(dow(d)!==1)d=addDays(d,-1);
+  return d;
+}
 
 /* ============================================================
    12n. MISCONCEPTIONS LIBRARY  (per-standard, quick-pick at the desk)
@@ -2087,6 +2092,7 @@ function WeeklyReportView({state,setState,toast}){
       <div style={{fontWeight:600,fontSize:15,minWidth:190,textAlign:"center"}}>{pretty(monday)} – {pretty(friday)}</div>
       <button className="icon-btn" onClick={()=>setMonday(addDays(monday,7))}><I d={ic.chevR}/></button>
       <button className="btn btn-sm" onClick={()=>setMonday(lastFullWeek(t).monday)}>Last full week</button>
+      <button className="btn btn-sm" onClick={()=>setMonday(currentWeekMonday(t))}>This week</button>
       {sections.length>0&&<div className="st-seg">{["All",...sections].map(s=><button key={s} className={"btn btn-sm"+(scope===s?" btn-primary":" btn-ghost")} onClick={()=>setScope(s)}>{s==="All"?"All classes":s}</button>)}</div>}
       <button className="btn btn-primary btn-sm" style={{marginLeft:"auto"}} onClick={()=>window.print()}><I d={ic.file} s={14}/> Print</button>
     </div>
