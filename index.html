@@ -1948,6 +1948,32 @@ function lastFullWeek(today){
 /* ============================================================
    12n0. WEEKLY DATA REPORT  (team meeting printout)
 ============================================================ */
+function DailyStackedBars({dailyBreakdown,avgPct}){
+  const barH=130;
+  const dayLabel=d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][parse(d).getDay()];
+  return(<div style={{display:"flex",gap:14,alignItems:"flex-end",marginTop:6,marginBottom:8,overflowX:"auto",paddingBottom:4}}>
+    {dailyBreakdown.map((day,i)=>{
+      const taught=!!day.taughtLesson;const total=day.total;
+      return(<div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:80,opacity:taught?1:0.42,flex:"0 0 auto"}}>
+        <div style={{width:44,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface-2)"}}>
+          {total>0&&[1,2,3,4].map(lv=>{const c=day.counts[lv];const pct=c/total*100;if(!pct)return null;const meta=M_LEVELS[lv];
+            return<div key={lv} style={{height:pct+"%",background:taught?meta.bg:"var(--muted-2)"}} title={`${meta.label}: ${c}`}/>;})}
+        </div>
+        <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink-2)",marginTop:6}}>{dayLabel(day.date)}</div>
+        {taught?(<div style={{fontSize:9,color:"var(--muted)",textAlign:"center",lineHeight:1.3,marginTop:2,maxWidth:78}}>{day.taughtLesson.title}</div>)
+          :(<div style={{fontSize:9,color:"var(--muted-2)",marginTop:2}}>Not taught</div>)}
+      </div>);
+    })}
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:80,borderLeft:"2px solid var(--border)",paddingLeft:14,marginLeft:2,flex:"0 0 auto"}}>
+      <div style={{width:44,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border-strong)",background:"var(--surface-2)"}}>
+        {[1,2,3,4].map(lv=>{const pct=avgPct[lv-1];if(!pct)return null;const meta=M_LEVELS[lv];return<div key={lv} style={{height:pct+"%",background:meta.bg}}/>;})}
+      </div>
+      <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink)",marginTop:6}}>Overall</div>
+      <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>Week avg</div>
+    </div>
+  </div>);
+}
+
 function WeeklyReportView({state,setState,toast}){
   const t=todayISO();
   const [monday,setMonday]=useState(()=>lastFullWeek(t).monday);
@@ -1986,6 +2012,19 @@ function WeeklyReportView({state,setState,toast}){
       if(before!==null){startCount++;if(before>=3)startMet++;}
       if(after!==null){endCount++;if(after>=3)endMet++;}
     });
+    // per-day cumulative distribution across the 4 mastery levels, plus which lesson (if any) taught this standard that day
+    const dailyBreakdown=weekDays.map(d=>{
+      const row=sched.byDate[d]||{};
+      let taughtLesson=null;
+      SUBJECTS.forEach(sub=>{const l=row[sub]&&lessonById(row[sub]);if(l&&(l.standards||[]).some(c=>normStd(c)===norm))taughtLesson=l;});
+      const counts=[0,0,0,0,0];let total=0; // index 0=unassessed,1-4=levels
+      roster.forEach(s=>{const lvl=masteryAsOf(state,s.id,norm,d);if(lvl===null)counts[0]++;else{counts[lvl]++;total++;}});
+      return{date:d,taughtLesson,counts,total};
+    });
+    // overall = the week's daily distributions averaged together
+    const avgPct=[0,0,0,0];let daysWithData=0;
+    dailyBreakdown.forEach(day=>{if(day.total>0){daysWithData++;for(let lv=1;lv<=4;lv++)avgPct[lv-1]+=(day.counts[lv]/day.total*100);}});
+    if(daysWithData>0)for(let i=0;i<4;i++)avgPct[i]/=daysWithData;
     // reflections for lessons this week tagged with this standard
     const reflections=(state.lessonReflections||[]).filter(r=>weekLessonIds.has(r.lessonId)&&(lessonById(r.lessonId)?.standards||[]).some(c=>normStd(c)===norm));
     // misconceptions actually observed this week for this standard, frequency counted
@@ -2004,7 +2043,7 @@ function WeeklyReportView({state,setState,toast}){
       });
     });
     const misconceptions=Object.values(counts).sort((a,b)=>b.count-a.count);
-    return{norm,code:codeOf[norm]||norm.toUpperCase(),desc:descOf[norm]||"",startCount,startMet,endCount,endMet,reflections,misconceptions};
+    return{norm,code:codeOf[norm]||norm.toUpperCase(),desc:descOf[norm]||"",startCount,startMet,endCount,endMet,dailyBreakdown,avgPct,daysWithData,reflections,misconceptions};
   };
 
   const reportSections=useMemo(()=>weekStandards.map(buildSection),[weekStandards,roster,state.masteryHistory,state.lessonReflections,state.evidence,monday]);
@@ -2042,14 +2081,18 @@ function WeeklyReportView({state,setState,toast}){
 
             <div className="p-sec-t" style={{marginBottom:8}}>Class improvement</div>
             {sec.startCount===0?(
-              <div className="p-body" style={{color:"var(--muted)",marginBottom:16}}>No mastery history recorded before this week yet — comparisons will appear starting next week.</div>
+              <div className="p-body" style={{color:"var(--muted)",marginBottom:8}}>No mastery history recorded before this week yet — comparisons will appear starting next week.</div>
             ):(
-              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:6,flexWrap:"wrap"}}>
                 <div style={{background:"var(--surface-2)",borderRadius:12,padding:"10px 16px"}}><div style={{fontSize:20,fontWeight:650}}>{Math.round(sec.startMet/sec.startCount*100)}%</div><div style={{fontSize:11,color:"var(--muted)"}}>at Meets+ · start of week</div></div>
                 <I d={ic.chevR} s={18}/>
                 <div style={{background:"var(--olive-soft)",borderRadius:12,padding:"10px 16px"}}><div style={{fontSize:20,fontWeight:650,color:"var(--olive-deep)"}}>{sec.endCount?Math.round(sec.endMet/sec.endCount*100):0}%</div><div style={{fontSize:11,color:"var(--olive-deep)"}}>at Meets+ · end of week</div></div>
               </div>
             )}
+            {sec.daysWithData>0?(<>
+              <DailyStackedBars dailyBreakdown={sec.dailyBreakdown} avgPct={sec.avgPct}/>
+              <div className="chips" style={{marginBottom:16}}>{M_LEVELS.slice(1).map(l=><span key={l.v} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:10.5,color:"var(--muted)"}}><span style={{width:10,height:10,borderRadius:3,background:l.bg,border:"1px solid "+l.bd,display:"inline-block"}}/>{l.label}</span>)}</div>
+            </>):<div style={{marginBottom:16}}/>}
 
             <div className="p-sec-t" style={{marginBottom:8}}>What went well</div>
             {sec.reflections.length?sec.reflections.map((r,i)=>r.whatWorked&&<div key={i} className="p-body" style={{marginBottom:6}}>• {r.whatWorked}</div>):<div className="p-body" style={{color:"var(--muted)",marginBottom:10}}>No reflections logged for this standard's lessons this week.</div>}
