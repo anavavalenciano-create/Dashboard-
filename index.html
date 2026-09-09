@@ -1906,7 +1906,16 @@ const NGSS_G4_SCIENCE=[
   ]},
 ];
 function allStandardDomains(){return[...CCSS_G4_MATH,...NGSS_G4_SCIENCE];}
-function normStd(code){return String(code).toLowerCase().replace(/\s+/g,"").replace(/\.([a-c])\.(\d)/,".$2");}
+// pull just the standard code off the front of a string, in case a description was typed after it
+function extractStdCode(raw){
+  const s=String(raw||"").trim();
+  let m=s.match(/^\d+-[A-Za-z]+\d*-\d+/);      // NGSS style, e.g. 4-PS3-2
+  if(m)return m[0];
+  m=s.match(/^\d+\.[A-Za-z]+(\.[A-Za-z])?\.\d+/); // CCSS style, e.g. 4.NBT.B.2 or 4.NBT.2
+  if(m)return m[0];
+  return s; // no recognizable code pattern — fall back to the original text
+}
+function normStd(code){return extractStdCode(code).toLowerCase().replace(/\s+/g,"").replace(/\.([a-c])\.(\d)/,".$2");}
 // bump a student's mastery level, logging one history entry per day (collapses repeated taps on the same day)
 function bumpMasteryLevel(setState,studentId,code){
   const today=todayISO();
