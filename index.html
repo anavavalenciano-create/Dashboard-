@@ -2731,9 +2731,17 @@ function SeatingView({state,setState,toast}){
   const activeNorms=useMemo(()=>activeLesson?(activeLesson.standards||[]).map(normStd):[],[activeLesson]);
   const activeMiscList=useMemo(()=>{
     const out=[];const seen=new Set();
-    activeNorms.forEach(n=>((state.misconceptions||{})[n]||[]).forEach(m=>{if(!seen.has(m.text.toLowerCase())){seen.add(m.text.toLowerCase());out.push(m);}}));
+    const allKeys=Object.keys(state.misconceptions||{});
+    activeNorms.forEach(n=>{
+      allKeys.forEach(k=>{
+        if(k===n||k.startsWith(n+".")||n.startsWith(k+".")){
+          (state.misconceptions[k]||[]).forEach(m=>{if(!seen.has(m.text.toLowerCase())){seen.add(m.text.toLowerCase());out.push(m);}});
+        }
+      });
+    });
     return out;
   },[activeNorms,state.misconceptions]);
+  const [selectedMiscs,setSelectedMiscs]=useState([]);
 
   const studById=useMemo(()=>{const m={};state.students.forEach(s=>m[s.id]=s);return m;},[state.students]);
   const roster=useMemo(()=>state.students.filter(s=>s.section===section),[state.students,section]);
@@ -2796,12 +2804,16 @@ function SeatingView({state,setState,toast}){
     setNoteFor(null);setNoteText("");setActive(null);
   };
   commitRef.current=commitNote;
-  const quickMisconception=(sid,text)=>{
+  const toggleMisc=id=>setSelectedMiscs(cur=>cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
+  const saveSelectedMiscs=sid=>{
+    if(!selectedMiscs.length)return;
     toast.checkpoint&&toast.checkpoint();
     const lid=recSubject?todaysBySubject[recSubject]:null;
-    setEv(sid,c=>({...c,notes:[...c.notes,{id:uid(),text,ts:Date.now(),kind:"misconception",lessonId:lid||null}]}));
-    setActive(null);
+    const chosen=activeMiscList.filter(m=>selectedMiscs.includes(m.id));
+    setEv(sid,c=>({...c,notes:[...c.notes,...chosen.map(m=>({id:uid(),text:m.text,ts:Date.now(),kind:"misconception",lessonId:lid||null}))]}));
+    setSelectedMiscs([]);setActive(null);
   };
+  useEffect(()=>{setSelectedMiscs([]);},[active]);
   const discardNote=()=>{if(saveTimer.current){clearTimeout(saveTimer.current);saveTimer.current=null;}setNoteFor(null);setNoteText("");};
   useEffect(()=>{
     if(saveTimer.current)clearTimeout(saveTimer.current);
@@ -2971,9 +2983,14 @@ function SeatingView({state,setState,toast}){
         </div>
 
         {!noteFor&&activeNorms.length>0&&<div style={{marginBottom:12}}>
-          {activeMiscList.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
-            {activeMiscList.map(m=><button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32}} onClick={()=>quickMisconception(s.id,m.text)}>{m.text}</button>)}
-          </div>}
+          {activeMiscList.length>0&&<>
+            <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+              {activeMiscList.map(m=>{const on=selectedMiscs.includes(m.id);
+                return<button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32,background:on?"var(--olive)":undefined,color:on?"#fff":undefined,borderColor:on?"var(--olive)":undefined}} onClick={()=>toggleMisc(m.id)}>{m.text}</button>;})}
+            </div>
+            {selectedMiscs.length>0&&<button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)",width:"100%",marginBottom:8}} onClick={()=>saveSelectedMiscs(s.id)}>Save {selectedMiscs.length} selected</button>}
+          </>}
           <button className="add-link" style={{fontSize:11.5}} onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"misconception"});setNoteText("");}}><I d={ic.plus} s={11}/> New misconception</button>
         </div>}
 
