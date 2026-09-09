@@ -307,12 +307,12 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
 /* ============================================================
    MODAL (forms & dialogs)
 ============================================================ */
-.modal-wrap{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;background:rgba(51,48,43,.32);backdrop-filter:blur(2px);animation:fade .18s var(--ease) forwards;}
-.modal{width:min(720px,100%);background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--sh-3);animation:pop .24s var(--ease);}
+.modal-wrap{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;background:rgba(51,48,43,.32);backdrop-filter:blur(2px);animation:fade .18s var(--ease) forwards;}
+.modal{width:min(720px,100%);max-height:min(700px,calc(100dvh - 80px));display:flex;flex-direction:column;background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--sh-3);animation:pop .24s var(--ease);overflow:hidden;}
 @keyframes pop{from{opacity:0;transform:translateY(14px) scale(.985);}to{opacity:1;transform:none;}}
-.modal-head{display:flex;align-items:center;justify-content:space-between;padding:22px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;z-index:2;}
-.modal-body{padding:24px 26px;}
-.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:18px 26px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--surface);border-radius:0 0 var(--r-xl) var(--r-xl);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:22px 26px;border-bottom:1px solid var(--border);background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;flex:none;}
+.modal-body{padding:24px 26px;overflow-y:auto;flex:1 1 auto;min-height:0;-webkit-overflow-scrolling:touch;}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:18px 26px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--r-xl) var(--r-xl);flex:none;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
 .fgroup{margin-bottom:18px;}
@@ -368,7 +368,10 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
 .st-flag{width:7px;height:7px;border-radius:50%;margin-left:auto;flex:0 0 7px;}
 .st-empty-label{font-size:10.5px;color:var(--muted-2);text-align:center;padding:10px 0;}
 .st-desk.sel{border-color:var(--olive);box-shadow:0 0 0 3px var(--olive-soft);z-index:15;}
-.st-desk.active{box-shadow:0 16px 34px rgba(51,48,43,.16),0 4px 10px rgba(51,48,43,.08);border-color:var(--sage);z-index:20;width:170px;}
+.st-desk.active{box-shadow:0 10px 22px rgba(51,48,43,.16),0 3px 8px rgba(51,48,43,.08);border-color:var(--sage);border-width:2px;z-index:20;}
+.teach-panel{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);width:min(420px,calc(100vw - 28px));max-height:min(72vh,540px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:20px;box-shadow:var(--sh-3);border:1px solid var(--border);padding:18px 20px;z-index:70;}
+.teach-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.teach-panel-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .st-tools{display:grid;grid-template-columns:1fr 1fr;gap:7px;max-height:0;opacity:0;overflow:hidden;transition:max-height .22s var(--ease),opacity .16s,margin-top .22s var(--ease);}
 .st-desk.active .st-tools{max-height:130px;opacity:1;margin-top:10px;}
 .st-tool{display:flex;align-items:center;justify-content:center;gap:5px;height:42px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-weight:600;font-size:11.5px;color:var(--ink);}
@@ -2647,6 +2650,11 @@ function SeatingView({state,setState,toast}){
     if(!wasDrag)setSel(cur=>(cur&&cur.kind==="desk"&&cur.id===d.id)?null:{kind:"desk",id:d.id});
   };
   const onCanvasClick=e=>{
+    if(mode==="teach"){
+      if(e.target.closest(".st-desk"))return;
+      if(active)commitRef.current();
+      return;
+    }
     if(mode!=="arrange")return;
     if(e.target.closest(".st-desk"))return; // handled by desk's own handlers
     if(sel&&sel.kind==="student"){const p=ptToPx(e.clientX,e.clientY);createSeatedAt(p.x,p.y,sel.id);setSel(null);}
@@ -2738,33 +2746,44 @@ function SeatingView({state,setState,toast}){
           </>)
             :<div className="st-empty-label">{mode==="arrange"?"Tap to select":"Empty"}</div>}
 
-          {isActive&&s&&!noteFor&&activeNorms.length>0&&<div style={{marginBottom:9}}>
-            {activeMiscList.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
-              {activeMiscList.map(m=><button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:30}} onClick={()=>quickMisconception(s.id,m.text)}>{m.text}</button>)}
-            </div>}
-            <button className="add-link" style={{fontSize:11}} onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"misconception"});setNoteText("");}}><I d={ic.plus} s={11}/> New misconception</button>
-          </div>}
-
-          {isActive&&s&&!noteFor&&<div className="st-tools">
-            <button className="st-tool" onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"voice"});setNoteText("");}}><I d={ic.mic} s={15}/>Voice</button>
-            <button className="st-tool" onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"work"});setNoteText("");}}><I d={ic.cam} s={15}/>Work</button>
-            <button className="st-tool" onClick={()=>flagFollow(s.id)}><I d={ic.clock} s={15}/>Follow up</button>
-            <button className="st-tool done" onClick={()=>markComplete(s.id)}><I d={ic.check} s={15}/>Complete</button>
-          </div>}
-
-          {isActive&&s&&noteFor&&noteFor.deskId===d.id&&<div className="st-note-input">
-            <textarea className="textarea" style={{minHeight:54,fontSize:13}} autoFocus value={noteText} onChange={e2=>setNoteText(e2.target.value)}
-              placeholder={noteFor.kind==="voice"?"Tap your keyboard mic and speak…":noteFor.kind==="work"?"Note about the work sample (photo capture coming soon)…":"Describe the misconception — saved for quick reuse next time…"}/>
-            <div style={{fontSize:10.5,color:"var(--muted-2)"}}>Saves automatically when you pause</div>
-            <div style={{display:"flex",gap:7}}><button className="st-mini" onClick={discardNote}>Cancel</button><button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)"}} onClick={commitNote}>Save now</button></div>
-          </div>}
-
           {mode==="teach"&&observed&&<div className="st-fold"/>}
           {mode==="teach"&&e&&e.followup&&<div className="st-clock"><I d={ic.clock} s={11}/></div>}
         </div>);
       })}
     </div>
     </div>
+
+    {mode==="teach"&&active&&(()=>{
+      const d=desks.find(x=>x.id===active);const s=d&&d.studentId?studById[d.studentId]:null;
+      if(!s)return null;
+      return(<div className="teach-panel">
+        <div className="teach-panel-head">
+          <div style={{fontWeight:700,fontSize:15}}>{s.name}</div>
+          <button className="panel-close" style={{position:"static"}} onClick={()=>{commitRef.current();setActive(null);}}><I d={ic.x}/></button>
+        </div>
+
+        {!noteFor&&activeNorms.length>0&&<div style={{marginBottom:12}}>
+          {activeMiscList.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+            {activeMiscList.map(m=><button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32}} onClick={()=>quickMisconception(s.id,m.text)}>{m.text}</button>)}
+          </div>}
+          <button className="add-link" style={{fontSize:11.5}} onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"misconception"});setNoteText("");}}><I d={ic.plus} s={11}/> New misconception</button>
+        </div>}
+
+        {!noteFor&&<div className="teach-panel-actions">
+          <button className="st-tool" onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"voice"});setNoteText("");}}><I d={ic.mic} s={16}/>Voice</button>
+          <button className="st-tool" onClick={()=>{setNoteFor({deskId:d.id,sid:s.id,kind:"work"});setNoteText("");}}><I d={ic.cam} s={16}/>Work</button>
+          <button className="st-tool" onClick={()=>flagFollow(s.id)}><I d={ic.clock} s={16}/>Follow up</button>
+          <button className="st-tool done" onClick={()=>markComplete(s.id)}><I d={ic.check} s={16}/>Complete</button>
+        </div>}
+
+        {noteFor&&noteFor.deskId===d.id&&<div className="st-note-input" style={{marginTop:0}}>
+          <textarea className="textarea" style={{minHeight:80,fontSize:14}} autoFocus value={noteText} onChange={e2=>setNoteText(e2.target.value)}
+            placeholder={noteFor.kind==="voice"?"Tap your keyboard mic and speak…":noteFor.kind==="work"?"Note about the work sample (photo capture coming soon)…":"Describe the misconception — saved for quick reuse next time…"}/>
+          <div style={{fontSize:11,color:"var(--muted-2)"}}>Saves automatically when you pause</div>
+          <div style={{display:"flex",gap:8}}><button className="st-mini" onClick={discardNote}>Cancel</button><button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)"}} onClick={commitNote}>Save now</button></div>
+        </div>}
+      </div>);
+    })()}
 
     {mode==="teach"&&<div className="no-print" style={{fontSize:12,color:"var(--muted)",marginTop:12,lineHeight:1.55}}>Tap a desk for quick actions · press &amp; hold for the Student Snapshot · the gold page means evidence today, the red clock means follow-up.</div>}
 
