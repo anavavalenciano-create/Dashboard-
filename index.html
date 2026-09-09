@@ -429,6 +429,8 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
   .st-canvas-scroll{overflow:visible !important;}
   .st-canvas-wrap{box-shadow:none !important;}
   .no-print{display:none !important;}
+  .weekly-day-col{min-width:0 !important;padding:10px 8px !important;font-size:90%;}
+  .weekly-day-col .p-sec-t{margin-top:8px !important;margin-bottom:4px !important;}
   .screen-only{display:none !important;}
   .print-only{display:block !important;}
 }
@@ -2041,7 +2043,7 @@ function DayColumnCard({day,dayName,dayNotes,onNotesChange}){
       </div>
     </div>
   );
-  return(<div className="card" style={{padding:"16px 14px",minWidth:196,flex:"1 1 0"}}>
+  return(<div className="card weekly-day-col" style={{padding:"16px 14px",minWidth:196,flex:"1 1 0",breakInside:"avoid",pageBreakInside:"avoid"}}>
     <div style={{fontSize:12,fontWeight:700,letterSpacing:".04em",textTransform:"uppercase",color:"var(--olive-deep)",marginBottom:12,borderBottom:"2px solid var(--olive)",paddingBottom:7}}>{dayName}</div>
     {!day.lesson?(
       <div style={{fontSize:12,color:"var(--muted-2)",padding:"24px 0",textAlign:"center"}}>No Math lesson scheduled</div>
@@ -2099,6 +2101,14 @@ function WeeklyReportView({state,setState,toast}){
 
   const setNextSteps=(norm,text)=>{setState(p=>({...p,weeklyReportNotes:{...(p.weeklyReportNotes||{}),[monday+"|"+norm]:text}}));};
   const [viewMode,setViewMode]=useState("standard"); // "standard" | "day"
+  useEffect(()=>{
+    if(viewMode!=="day")return;
+    const style=document.createElement("style");
+    style.id="weekly-landscape-print";
+    style.textContent="@media print{ @page{ size: landscape; margin: 12mm; } }";
+    document.head.appendChild(style);
+    return()=>{const el=document.getElementById("weekly-landscape-print");if(el)el.remove();};
+  },[viewMode]);
   const setDayNotes=(date,text)=>{setState(p=>({...p,weeklyReportDayNotes:{...(p.weeklyReportDayNotes||{}),[date]:text}}));};
 
   // Math-only day-by-day columns: today's fresh snapshot (bar1) vs the standard's running trend (bar2)
@@ -2205,7 +2215,7 @@ function WeeklyReportView({state,setState,toast}){
       {viewMode==="standard"?(
         !reportSections.length?(<div className="empty"><div className="empty-ic"><I d={ic.trend} s={24}/></div><h3>No standards taught that week</h3><p className="no-print">Tag standards on your lessons so this report has something to summarize.</p></div>):
         reportSections.map(sec=>(
-          <div className="card" key={sec.norm} style={{padding:"20px 22px",marginBottom:18}}>
+          <div className="card" key={sec.norm} style={{padding:"20px 22px",marginBottom:18,breakInside:"avoid",pageBreakInside:"avoid"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
               <span className="pill pill-olive" style={{fontFamily:"ui-monospace,monospace"}}>{sec.code}</span>
               <span style={{fontSize:13,color:"var(--muted)"}}>{sec.desc}</span>
