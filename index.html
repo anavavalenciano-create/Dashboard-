@@ -558,6 +558,8 @@ const EMPTY_STATE={
   lessonReflections:[], // [{id,lessonId,date,whatWorked,whatDidnt,whoStruggled}]
   misconceptions:{}, // standardNorm -> [{id,text}] — quick-pick library built from real observations
   dismissedGoalReminders:{}, // dateISO -> [goalId] — reminders quieted for just that day
+  masteryHistory:{}, // studentId -> code -> [{date,level}] — one entry per day touched, for week-over-week comparison
+  weeklyReportNotes:{}, // "weekMonday|standardNorm" -> suggested next-steps text
 };
 const LS_KEY="teacher-os-state-v1";
 
@@ -692,6 +694,7 @@ const ic={
   badge:<><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="12" cy="10" r="2.4"/><path d="M8 16c1.2-1.8 6.8-1.8 8 0"/></>,
   trend:<><path d="M4 17l5-6 4 3 6-8"/><circle cx="4" cy="17" r="1.3"/><circle cx="9" cy="11" r="1.3"/><circle cx="13" cy="14" r="1.3"/><circle cx="19" cy="6" r="1.3"/></>,
   bulb:<><path d="M12 3a8 8 0 0 0-8 8c0 3 1.6 5 4 6.4V21l3-2h1a8 8 0 0 0 0-16z"/><path d="M12 8v4M12 15h.01"/></>,
+  weekly:<><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><path d="m9 14 2 2 4-4"/></>,
 };
 const M_LEVELS=[
   {v:0,short:"·",label:"Not assessed",bg:"var(--surface-2)",fg:"var(--muted-2)",bd:"var(--border)"},
@@ -751,6 +754,7 @@ function LessonForm({initial,onSave,onClose,onDelete}){
   const [f,setF]=useState(()=>({...BLANK_LESSON,...initial}));
   const up=(k,v)=>setF(p=>({...p,[k]:v}));
   const num=(k,v)=>up(k,v===""?"":Math.max(0,parseInt(v||0,10)));
+  const numDec=(k,v)=>up(k,v===""?"":Math.max(0,parseFloat(v||0)));
   const valid=f.title.trim().length>0;
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="modal">
@@ -772,7 +776,7 @@ function LessonForm({initial,onSave,onClose,onDelete}){
         <div className="grid3">
           <Field label="Quarter"><select className="select" value={f.quarter} onChange={e=>up("quarter",parseInt(e.target.value,10))}>{[1,2,3,4].map(q=><option key={q} value={q}>Quarter {q}</option>)}</select></Field>
           <Field label="Module"><input className="input" type="number" min="1" value={f.module} onChange={e=>num("module",e.target.value)}/></Field>
-          <Field label="Lesson #"><input className="input" type="number" min="1" value={f.lessonNumber} onChange={e=>num("lessonNumber",e.target.value)}/></Field>
+          <Field label="Lesson #" hint="Use a decimal like 4.5 to slot this between two existing lessons"><input className="input" type="number" step="0.5" min="1" value={f.lessonNumber} onChange={e=>numDec("lessonNumber",e.target.value)}/></Field>
         </div>
 
         <div className="form-sec-t">Core</div>
@@ -829,7 +833,7 @@ function LessonMasteryModal({lesson,state,setState,toast,onClose}){
   const [section,setSection]=useState("All");
   const students=state.students.filter(s=>section==="All"||s.section===section);
   const standards=lesson.standards||[];
-  const cycleLevel=(sid,std)=>{toast.checkpoint&&toast.checkpoint();setState(p=>{const m={...p.mastery,[sid]:{...(p.mastery[sid]||{})}};m[sid][std]=((m[sid][std]||0)+1)%5;return{...p,mastery:m};});};
+  const cycleLevel=(sid,std)=>{toast.checkpoint&&toast.checkpoint();bumpMasteryLevel(setState,sid,std);};
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="modal" style={{maxWidth:720}}>
       <div className="modal-head"><div><div className="eyebrow" style={{marginBottom:2}}>Catch up mastery</div><h2 style={{fontSize:18}}>{lesson.title}</h2></div>
@@ -1691,7 +1695,7 @@ function StudentsView({state,setState,toast,onReport}){
   const addStudents=list=>setState(p=>({...p,students:[...p.students,...list.map(x=>({id:uid(),...x}))]}));
   const updStudent=(id,patch)=>setState(p=>({...p,students:p.students.map(s=>s.id===id?{...s,...patch}:s)}));
   const delStudent=id=>setState(p=>{const m={...p.mastery};delete m[id];return{...p,students:p.students.filter(s=>s.id!==id),mastery:m};});
-  const cycleLevel=(sid,std)=>setState(p=>{const m={...p.mastery,[sid]:{...(p.mastery[sid]||{})}};m[sid][std]=((m[sid][std]||0)+1)%5;return{...p,mastery:m};});
+  const cycleLevel=(sid,std)=>{toast.checkpoint&&toast.checkpoint();bumpMasteryLevel(setState,sid,std);};
 
   const TABS=[{k:"roster",label:"Roster",icon:ic.users},{k:"mastery",label:"Mastery grid",icon:ic.grid},{k:"snapshot",label:"Class snapshot",icon:ic.chart}];
 
@@ -1903,10 +1907,171 @@ const NGSS_G4_SCIENCE=[
 ];
 function allStandardDomains(){return[...CCSS_G4_MATH,...NGSS_G4_SCIENCE];}
 function normStd(code){return String(code).toLowerCase().replace(/\s+/g,"").replace(/\.([a-c])\.(\d)/,".$2");}
+// bump a student's mastery level, logging one history entry per day (collapses repeated taps on the same day)
+function bumpMasteryLevel(setState,studentId,code){
+  const today=todayISO();
+  setState(p=>{
+    const mastery={...p.mastery,[studentId]:{...(p.mastery[studentId]||{})}};
+    const newLevel=((mastery[studentId][code]||0)+1)%5;
+    mastery[studentId][code]=newLevel;
+    const hist={...(p.masteryHistory||{})};
+    const studHist={...(hist[studentId]||{})};
+    const list=studHist[code]?[...studHist[code]]:[];
+    if(list.length&&list[list.length-1].date===today)list[list.length-1]={date:today,level:newLevel};
+    else list.push({date:today,level:newLevel});
+    studHist[code]=list;hist[studentId]=studHist;
+    return{...p,mastery,masteryHistory:hist};
+  });
+}
+// latest recorded level for a student/standard on or before a given date — null if no history exists yet
+function masteryAsOf(state,studentId,standardNorm,dateISO){
+  const studHist=(state.masteryHistory||{})[studentId]||{};
+  let best=null;
+  Object.keys(studHist).forEach(code=>{
+    const n=normStd(code);
+    if(n===standardNorm||n.startsWith(standardNorm+".")||standardNorm.startsWith(n+".")){
+      studHist[code].forEach(entry=>{if(entry.date<=dateISO&&(!best||entry.date>best.date))best=entry;});
+    }
+  });
+  return best?best.level:null;
+}
+// the most recently completed Monday–Friday span strictly before the given date
+function lastFullWeek(today){
+  let d=addDays(today,-1);
+  while(dow(d)!==5)d=addDays(d,-1);
+  return{monday:addDays(d,-4),friday:d};
+}
 
 /* ============================================================
    12n. MISCONCEPTIONS LIBRARY  (per-standard, quick-pick at the desk)
 ============================================================ */
+/* ============================================================
+   12n0. WEEKLY DATA REPORT  (team meeting printout)
+============================================================ */
+function WeeklyReportView({state,setState,toast}){
+  const t=todayISO();
+  const [monday,setMonday]=useState(()=>lastFullWeek(t).monday);
+  const friday=addDays(monday,4);
+  const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
+  const [scope,setScope]=useState("All");
+  const sched=useMemo(()=>computeSchedule(state),[state]);
+  const weekDays=useMemo(()=>eachDate(monday,friday).filter(d=>dow(d)>=1&&dow(d)<=5),[monday]);
+  const roster=useMemo(()=>state.students.filter(s=>scope==="All"||s.section===scope),[state.students,scope]);
+  const lessonById=id=>state.lessons.find(l=>l.id===id);
+  const descOf={};allStandardDomains().forEach(d=>d.standards.forEach(s=>descOf[normStd(s.code)]=s.desc));
+  const codeOf={};allStandardDomains().forEach(d=>d.standards.forEach(s=>codeOf[normStd(s.code)]=s.code));
+
+  // which standards were actually taught this week
+  const weekStandards=useMemo(()=>{
+    const norms=new Set();
+    weekDays.forEach(d=>{const row=sched.byDate[d]||{};SUBJECTS.forEach(sub=>{const l=row[sub]&&lessonById(row[sub]);(l&&l.standards||[]).forEach(c=>norms.add(normStd(c)));});});
+    return[...norms].sort();
+  },[weekDays,sched,state.lessons]);
+
+  // lessons taught this week, for pulling reflections
+  const weekLessonIds=useMemo(()=>{
+    const ids=new Set();
+    weekDays.forEach(d=>{const row=sched.byDate[d]||{};SUBJECTS.forEach(sub=>{if(row[sub])ids.add(row[sub]);});});
+    return ids;
+  },[weekDays,sched]);
+
+  const setNextSteps=(norm,text)=>{setState(p=>({...p,weeklyReportNotes:{...(p.weeklyReportNotes||{}),[monday+"|"+norm]:text}}));};
+
+  const buildSection=norm=>{
+    // mastery movement
+    let startCount=0,startMet=0,endMet=0,endCount=0;
+    roster.forEach(s=>{
+      const before=masteryAsOf(state,s.id,norm,addDays(monday,-1));
+      const after=masteryAsOf(state,s.id,norm,friday);
+      if(before!==null){startCount++;if(before>=3)startMet++;}
+      if(after!==null){endCount++;if(after>=3)endMet++;}
+    });
+    // reflections for lessons this week tagged with this standard
+    const reflections=(state.lessonReflections||[]).filter(r=>weekLessonIds.has(r.lessonId)&&(lessonById(r.lessonId)?.standards||[]).some(c=>normStd(c)===norm));
+    // misconceptions actually observed this week for this standard, frequency counted
+    const counts={};
+    weekDays.forEach(d=>{
+      const dayRec=(state.evidence||{})[d]||{};
+      roster.forEach(s=>{
+        (dayRec[s.id]?.notes||[]).forEach(n=>{
+          if(n.kind!=="misconception"||!n.lessonId)return;
+          const l=lessonById(n.lessonId);
+          if(!l||!(l.standards||[]).some(c=>normStd(c)===norm))return;
+          const key=n.text.trim().toLowerCase();
+          counts[key]=counts[key]||{text:n.text.trim(),count:0};
+          counts[key].count++;
+        });
+      });
+    });
+    const misconceptions=Object.values(counts).sort((a,b)=>b.count-a.count);
+    return{norm,code:codeOf[norm]||norm.toUpperCase(),desc:descOf[norm]||"",startCount,startMet,endCount,endMet,reflections,misconceptions};
+  };
+
+  const reportSections=useMemo(()=>weekStandards.map(buildSection),[weekStandards,roster,state.masteryHistory,state.lessonReflections,state.evidence,monday]);
+
+  if(!state.students.length)return(<div className="content"><div className="empty"><div className="empty-ic"><I d={ic.trend} s={24}/></div><h3>Add your students first</h3><p>The weekly report pulls from your roster, mastery, and observations.</p></div></div>);
+
+  return(<div className="content">
+    <div className="no-print" style={{marginBottom:16}}>
+      <h1 style={{fontSize:22}}>Weekly data report</h1>
+      <div className="greet-sub" style={{margin:"3px 0 0"}}>Improvement, what worked, common misconceptions, and next steps — ready to print for your team meeting.</div>
+    </div>
+
+    <div className="no-print" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16}}>
+      <button className="icon-btn" onClick={()=>setMonday(addDays(monday,-7))}><I d={ic.chevL}/></button>
+      <div style={{fontWeight:600,fontSize:15,minWidth:190,textAlign:"center"}}>{pretty(monday)} – {pretty(friday)}</div>
+      <button className="icon-btn" onClick={()=>setMonday(addDays(monday,7))}><I d={ic.chevR}/></button>
+      <button className="btn btn-sm" onClick={()=>setMonday(lastFullWeek(t).monday)}>Last full week</button>
+      {sections.length>0&&<div className="st-seg">{["All",...sections].map(s=><button key={s} className={"btn btn-sm"+(scope===s?" btn-primary":" btn-ghost")} onClick={()=>setScope(s)}>{s==="All"?"All classes":s}</button>)}</div>}
+      <button className="btn btn-primary btn-sm" style={{marginLeft:"auto"}} onClick={()=>window.print()}><I d={ic.file} s={14}/> Print</button>
+    </div>
+
+    <div className="report-doc">
+      <div className="print-only" style={{marginBottom:18,borderBottom:"2px solid var(--olive)",paddingBottom:14}}>
+        <div className="serif" style={{fontSize:21,fontWeight:600}}>Weekly Data Review</div>
+        <div style={{fontSize:12.5,color:"var(--muted)",marginTop:2}}>{pretty(monday)} – {pretty(friday)} · {scope==="All"?"All classes":scope} · Mrs. Nava</div>
+      </div>
+
+      {!reportSections.length?(<div className="empty"><div className="empty-ic"><I d={ic.trend} s={24}/></div><h3>No standards taught that week</h3><p className="no-print">Tag standards on your lessons so this report has something to summarize.</p></div>):
+        reportSections.map(sec=>(
+          <div className="card" key={sec.norm} style={{padding:"20px 22px",marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <span className="pill pill-olive" style={{fontFamily:"ui-monospace,monospace"}}>{sec.code}</span>
+              <span style={{fontSize:13,color:"var(--muted)"}}>{sec.desc}</span>
+            </div>
+
+            <div className="p-sec-t" style={{marginBottom:8}}>Class improvement</div>
+            {sec.startCount===0?(
+              <div className="p-body" style={{color:"var(--muted)",marginBottom:16}}>No mastery history recorded before this week yet — comparisons will appear starting next week.</div>
+            ):(
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16,flexWrap:"wrap"}}>
+                <div style={{background:"var(--surface-2)",borderRadius:12,padding:"10px 16px"}}><div style={{fontSize:20,fontWeight:650}}>{Math.round(sec.startMet/sec.startCount*100)}%</div><div style={{fontSize:11,color:"var(--muted)"}}>at Meets+ · start of week</div></div>
+                <I d={ic.chevR} s={18}/>
+                <div style={{background:"var(--olive-soft)",borderRadius:12,padding:"10px 16px"}}><div style={{fontSize:20,fontWeight:650,color:"var(--olive-deep)"}}>{sec.endCount?Math.round(sec.endMet/sec.endCount*100):0}%</div><div style={{fontSize:11,color:"var(--olive-deep)"}}>at Meets+ · end of week</div></div>
+              </div>
+            )}
+
+            <div className="p-sec-t" style={{marginBottom:8}}>What went well</div>
+            {sec.reflections.length?sec.reflections.map((r,i)=>r.whatWorked&&<div key={i} className="p-body" style={{marginBottom:6}}>• {r.whatWorked}</div>):<div className="p-body" style={{color:"var(--muted)",marginBottom:10}}>No reflections logged for this standard's lessons this week.</div>}
+            {sec.reflections.some(r=>r.whatDidnt)&&<>
+              <div className="p-sec-t" style={{marginTop:12,marginBottom:8}}>What didn't</div>
+              {sec.reflections.map((r,i)=>r.whatDidnt&&<div key={i} className="p-body" style={{marginBottom:6}}>• {r.whatDidnt}</div>)}
+            </>}
+
+            <div className="p-sec-t" style={{marginTop:14,marginBottom:8}}>Common misconceptions</div>
+            {sec.misconceptions.length?sec.misconceptions.map((m,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+              <span className="pill pill-terra" style={{fontSize:10}}>{m.count}×</span><span className="p-body">{m.text}</span>
+            </div>)):<div className="p-body" style={{color:"var(--muted)"}}>None logged this week for this standard.</div>}
+
+            <div className="p-sec-t" style={{marginTop:14,marginBottom:8}}>Suggested next steps</div>
+            <textarea className="textarea screen-only" style={{minHeight:64}} value={(state.weeklyReportNotes||{})[monday+"|"+sec.norm]||""} onChange={e=>setNextSteps(sec.norm,e.target.value)} placeholder="Reteach plan, small groups, materials needed…"/>
+            <div className="print-only" style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.55,color:(state.weeklyReportNotes||{})[monday+"|"+sec.norm]?"var(--ink)":"var(--muted-2)"}}>{(state.weeklyReportNotes||{})[monday+"|"+sec.norm]||"—"}</div>
+          </div>
+        ))}
+    </div>
+  </div>);
+}
+
 function MisconceptionsView({state,setState,toast}){
   const [subject,setSubject]=useState("Math");
   const DOMAINS=subject==="Math"?CCSS_G4_MATH:NGSS_G4_SCIENCE;
@@ -3884,12 +4049,13 @@ function App(){
     {k:"groups",label:"Small groups",icon:ic.groups,group:"Track"},
     {k:"data",label:"Data dashboard",icon:ic.chart,group:"Track"},
     {k:"misconceptions",label:"Misconceptions",icon:ic.bulb,group:"Track"},
+    {k:"weekly",label:"Weekly report",icon:ic.weekly,group:"Track"},
     {k:"testscores",label:"Assessment scores",icon:ic.trend,group:"Track"},
     {k:"reports",label:"Conference reports",icon:ic.file,group:"Track"},
     {k:"year",label:"School year",icon:ic.gear,group:"Setup"},
   ];
   const GROUPS=["Plan","Track","Setup"];
-  const TITLES={dashboard:"Dashboard",planner:"Monthly planner",bank:"Lesson bank",subplans:"Sub plans",students:"Students & mastery",attendance:"Attendance",seating:"Seating chart",goals:"Student goals",groups:"Small groups",data:"Data dashboard",misconceptions:"Misconceptions",testscores:"Assessment scores",reports:"Conference reports",year:"School year"};
+  const TITLES={dashboard:"Dashboard",planner:"Monthly planner",bank:"Lesson bank",subplans:"Sub plans",students:"Students & mastery",attendance:"Attendance",seating:"Seating chart",goals:"Student goals",groups:"Small groups",data:"Data dashboard",misconceptions:"Misconceptions",weekly:"Weekly report",testscores:"Assessment scores",reports:"Conference reports",year:"School year"};
 
   if(CLOUD&&authUser===null)return <Loading/>;
   if(CLOUD&&authUser===false)return <SignIn/>;
@@ -3932,6 +4098,7 @@ function App(){
       {view==="groups"&&<GroupsView state={state}/>}
       {view==="data"&&<DataDashboard state={state} onOpen={openLesson}/>}
       {view==="misconceptions"&&<MisconceptionsView state={state} setState={setState} toast={toast}/>}
+      {view==="weekly"&&<WeeklyReportView state={state} setState={setState} toast={toast}/>}
       {view==="testscores"&&<TestScoresView state={state} setState={setState} toast={toast}/>}
       {view==="reports"&&<ReportsView state={state} setState={setState} initialStudent={reportStudent}/>}
       {view==="year"&&<SchoolYear state={state} setState={setState} toast={toast}/>}
