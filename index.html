@@ -1989,6 +1989,15 @@ function currentWeekMonday(today){
 /* ============================================================
    12n0. WEEKLY DATA REPORT  (team meeting printout)
 ============================================================ */
+const BAR_LEVEL_COLORS={1:"#D9483C",2:"#E8A83A",3:"#5F9A3D",4:"#2F6B2A"};
+function LevelCountList({counts}){
+  return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 8px",marginTop:6,justifyItems:"start"}}>
+    {[1,2,3,4].map(lv=>(<div key={lv} style={{display:"flex",alignItems:"center",gap:4}}>
+      <span style={{width:8,height:8,borderRadius:2,background:BAR_LEVEL_COLORS[lv],flexShrink:0}}/>
+      <span style={{fontSize:9.5,fontWeight:700,color:"var(--ink-2)"}}>{counts[lv]||0}</span>
+    </div>))}
+  </div>);
+}
 function DailyStackedBars({dailyBreakdown,avgPct,standardCode}){
   const barH=130;const ctxH=98;
   const today=todayISO();
@@ -2013,9 +2022,10 @@ function DailyStackedBars({dailyBreakdown,avgPct,standardCode}){
         <div style={{width:48,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",
           border:isToday?"2px solid var(--sage,#8CA06F)":"1px solid var(--border)",background:"var(--surface-2)",
           boxShadow:isToday?"0 0 0 3px var(--olive-soft)":"none"}}>
-          {total>0&&[1,2,3,4].map(lv=>{const c=day.counts[lv];const pct=c/total*100;if(!pct)return null;const meta=M_LEVELS[lv];
-            return<div key={lv} style={{height:pct+"%",background:taught?meta.bg:"var(--muted-2)"}} title={`${meta.label}: ${c}`}/>;})}
+          {total>0&&[1,2,3,4].map(lv=>{const c=day.counts[lv];const pct=c/total*100;if(!pct)return null;
+            return<div key={lv} style={{height:pct+"%",background:taught?BAR_LEVEL_COLORS[lv]:"var(--muted-2)"}} title={`${M_LEVELS[lv].label}: ${c}`}/>;})}
         </div>
+        {total>0&&<LevelCountList counts={day.counts}/>}
         <div style={{fontSize:10.5,fontWeight:700,color:isToday?"var(--olive-deep)":"var(--ink-2)",marginTop:6}}>{dayLabel(day.date)}{isToday?" · Today":""}</div>
         {!taught&&<div style={{fontSize:9,color:"var(--muted-2)",marginTop:2}}>Not taught</div>}
         {delta!==null&&<div style={{fontSize:10,fontWeight:700,color:delta>=0?"var(--olive-deep)":"var(--terra-deep)",marginTop:3}}>{delta>=0?"▲":"▼"} {Math.abs(delta)}% vs yesterday</div>}
@@ -2024,7 +2034,13 @@ function DailyStackedBars({dailyBreakdown,avgPct,standardCode}){
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:80,borderLeft:"2px solid var(--border)",paddingLeft:14,marginLeft:2,flex:"0 0 auto"}}>
       <div style={{height:ctxH,marginBottom:8}}/>
       <div style={{width:48,height:barH,display:"flex",flexDirection:"column-reverse",borderRadius:7,overflow:"hidden",border:"1px solid var(--border-strong)",background:"var(--surface-2)"}}>
-        {[1,2,3,4].map(lv=>{const pct=avgPct[lv-1];if(!pct)return null;const meta=M_LEVELS[lv];return<div key={lv} style={{height:pct+"%",background:meta.bg}}/>;})}
+        {[1,2,3,4].map(lv=>{const pct=avgPct[lv-1];if(!pct)return null;return<div key={lv} style={{height:pct+"%",background:BAR_LEVEL_COLORS[lv]}}/>;})}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 8px",marginTop:6,justifyItems:"start"}}>
+        {[1,2,3,4].map(lv=>(<div key={lv} style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{width:8,height:8,borderRadius:2,background:BAR_LEVEL_COLORS[lv],flexShrink:0}}/>
+          <span style={{fontSize:9.5,fontWeight:700,color:"var(--ink-2)"}}>{Math.round(avgPct[lv-1])}%</span>
+        </div>))}
       </div>
       <div style={{fontSize:10.5,fontWeight:700,color:"var(--ink)",marginTop:6}}>Overall</div>
       <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>Week avg</div>
@@ -2038,9 +2054,10 @@ function DayColumnCard({day,dayName,dayNotes,onNotesChange}){
     <div style={{marginBottom:9}}>
       <div style={{fontSize:9.5,color:"var(--muted)",marginBottom:3,fontWeight:600}}>{label}</div>
       <div style={{width:"100%",height:barH,display:"flex",borderRadius:6,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface-2)"}}>
-        {total>0?[1,2,3,4].map(lv=>{const c=counts[lv];const pct=c/total*100;if(!pct)return null;const meta=M_LEVELS[lv];
-          return<div key={lv} style={{width:pct+"%",background:meta.bg}} title={`${meta.label}: ${c}`}/>;}):<div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"var(--muted-2)"}}>No data</div>}
+        {total>0?[1,2,3,4].map(lv=>{const c=counts[lv];const pct=c/total*100;if(!pct)return null;
+          return<div key={lv} style={{width:pct+"%",background:BAR_LEVEL_COLORS[lv]}} title={`${M_LEVELS[lv].label}: ${c}`}/>;}):<div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"var(--muted-2)"}}>No data</div>}
       </div>
+      {total>0&&<LevelCountList counts={counts}/>}
     </div>
   );
   return(<div className="card weekly-day-col" style={{padding:"16px 14px",minWidth:196,flex:"1 1 0",breakInside:"avoid",pageBreakInside:"avoid"}}>
