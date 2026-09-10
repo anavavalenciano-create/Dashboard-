@@ -865,12 +865,108 @@ function LessonMasteryModal({lesson,lessonDate,state,setState,toast,onClose}){
     </div>
   </div>);
 }
+function LessonObservationsModal({lesson,lessonDate,state,setState,toast,onClose}){
+  const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
+  const [section,setSection]=useState("All");
+  const [expandedSid,setExpandedSid]=useState(null);
+  const [selectedMiscs,setSelectedMiscs]=useState([]);
+  const [newText,setNewText]=useState("");
+  const [showNew,setShowNew]=useState(false);
+
+  const students=state.students.filter(s=>section==="All"||s.section===section);
+  const activeNorms=useMemo(()=>(lesson.standards||[]).map(normStd),[lesson.standards]);
+  const miscList=useMemo(()=>{
+    const out=[];const seen=new Set();
+    const allKeys=Object.keys(state.misconceptions||{});
+    activeNorms.forEach(n=>allKeys.forEach(k=>{
+      if(k===n||k.startsWith(n+".")||n.startsWith(k+".")){
+        (state.misconceptions[k]||[]).forEach(m=>{if(!seen.has(m.text.toLowerCase())){seen.add(m.text.toLowerCase());out.push(m);}});
+      }
+    }));
+    return out;
+  },[activeNorms,state.misconceptions]);
+
+  const evFor=sid=>(((state.evidence||{})[lessonDate]||{})[sid])||{notes:[],followup:false,completed:false};
+  const setEv=(sid,fn)=>setState(p=>{const evd={...(p.evidence||{})};const day={...(evd[lessonDate]||{})};const cur=day[sid]||{notes:[],followup:false,completed:false};day[sid]=fn({...cur,notes:[...(cur.notes||[])]});evd[lessonDate]=day;return{...p,evidence:evd};});
+
+  const toggleMisc=id=>setSelectedMiscs(cur=>cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
+  const saveSelected=sid=>{
+    if(!selectedMiscs.length)return;
+    toast.checkpoint&&toast.checkpoint();
+    const chosen=miscList.filter(m=>selectedMiscs.includes(m.id));
+    setEv(sid,c=>({...c,notes:[...c.notes,...chosen.map(m=>({id:uid(),text:m.text,ts:Date.now(),kind:"misconception",lessonId:lesson.id}))]}));
+    setSelectedMiscs([]);
+  };
+  const saveNew=sid=>{
+    const t=newText.trim();if(!t)return;
+    toast.checkpoint&&toast.checkpoint();
+    setEv(sid,c=>({...c,notes:[...c.notes,{id:uid(),text:t,ts:Date.now(),kind:"misconception",lessonId:lesson.id}]}));
+    if(activeNorms[0]){
+      const norm=activeNorms[0];
+      setState(p=>{const m={...(p.misconceptions||{})};const list=m[norm]||[];
+        if(!list.some(x=>x.text.toLowerCase()===t.toLowerCase()))m[norm]=[...list,{id:uid(),text:t}];
+        return{...p,misconceptions:m};});
+    }
+    setNewText("");setShowNew(false);
+  };
+  const delNote=(sid,nid)=>{toast.checkpoint&&toast.checkpoint();setEv(sid,c=>({...c,notes:c.notes.filter(n=>n.id!==nid)}));};
+
+  return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div className="modal" style={{maxWidth:600}}>
+      <div className="modal-head"><div><div className="eyebrow" style={{marginBottom:2}}>Catch up observations</div><h2 style={{fontSize:18}}>{lesson.title}</h2></div>
+        <button className="panel-close" style={{position:"static"}} onClick={onClose}><I d={ic.x}/></button></div>
+      <div className="modal-body">
+        <div className="hint" style={{marginBottom:14,color:"var(--olive-deep)",fontWeight:600}}>Logging for {prettyLong(lessonDate)}</div>
+        {!activeNorms.length&&<p style={{fontSize:12.5,color:"var(--muted)",marginTop:-6,marginBottom:14}}>This lesson has no standard tagged, so there's no quick-pick list — you can still type a new observation for each student below.</p>}
+        {sections.length>1&&<div className="filters" style={{marginBottom:14}}>
+          <button className={"fchip"+(section==="All"?" on":"")} onClick={()=>setSection("All")}>All classes</button>
+          {sections.map(s=><button key={s} className={"fchip"+(section===s?" on":"")} onClick={()=>setSection(s)}>{s}</button>)}
+        </div>}
+        {students.map(s=>{
+          const ev=evFor(s.id);
+          const expanded=expandedSid===s.id;
+          return(<div key={s.id} className="gl-card" style={{marginBottom:10,cursor:"pointer"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}} onClick={()=>{setExpandedSid(expanded?null:s.id);setSelectedMiscs([]);setShowNew(false);}}>
+              <span style={{flex:1,fontWeight:600,fontSize:13.5}}>{s.name}</span>
+              {ev.notes.length>0&&<span className="pill pill-gray" style={{fontSize:10}}>{ev.notes.length} logged</span>}
+              <I d={ic.chevR} s={14}/>
+            </div>
+            {ev.notes.length>0&&<div style={{marginTop:8}}>
+              {ev.notes.map(n=>(<div key={n.id} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",fontSize:12.5}}>
+                <span style={{flex:1,color:"var(--ink-2)"}}>{n.text}</span>
+                <button className="mini-x" style={{width:22,height:22,flex:"0 0 22px"}} onClick={e=>{e.stopPropagation();delNote(s.id,n.id);}}><I d={ic.x} s={11}/></button>
+              </div>))}
+            </div>}
+            {expanded&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
+              {miscList.length>0&&<>
+                <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {miscList.map(m=>{const on=selectedMiscs.includes(m.id);
+                    return<button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32,background:on?"var(--olive)":undefined,color:on?"#fff":undefined,borderColor:on?"var(--olive)":undefined}} onClick={()=>toggleMisc(m.id)}>{m.text}</button>;})}
+                </div>
+                {selectedMiscs.length>0&&<button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)",width:"100%",marginBottom:8}} onClick={()=>saveSelected(s.id)}>Save {selectedMiscs.length} selected</button>}
+              </>}
+              {!showNew?(
+                <button className="add-link" onClick={()=>setShowNew(true)}><I d={ic.plus} s={13}/> New misconception</button>
+              ):(<div style={{display:"flex",gap:8}}>
+                <input className="input" autoFocus value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveNew(s.id);}} placeholder="Describe the misconception…"/>
+                <button className="btn btn-primary btn-sm" onClick={()=>saveNew(s.id)}>Save</button>
+              </div>)}
+            </div>}
+          </div>);
+        })}
+      </div>
+      <div className="modal-foot"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
+    </div>
+  </div>);
+}
 function LessonPanel({lesson,dateInfo,dateVal,prep,onPrep,onClose,onEdit,state,setState,toast}){
   if(!lesson)return null;
   const prepItems=lesson.materials||[];
   const done=prep||{};
   const [showReflect,setShowReflect]=useState(false);
   const [showMastery,setShowMastery]=useState(false);
+  const [showObservations,setShowObservations]=useState(false);
   const reflections=(state.lessonReflections||[]).filter(r=>r.lessonId===lesson.id).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const addReflection=r=>{toast.checkpoint&&toast.checkpoint();setState(p=>({...p,lessonReflections:[...(p.lessonReflections||[]),{id:uid(),lessonId:lesson.id,...r}]}));setShowReflect(false);toast.show("Reflection saved");};
   const delReflection=id=>{toast.checkpoint&&toast.checkpoint();setState(p=>({...p,lessonReflections:(p.lessonReflections||[]).filter(r=>r.id!==id)}));};
@@ -891,6 +987,7 @@ function LessonPanel({lesson,dateInfo,dateVal,prep,onPrep,onClose,onEdit,state,s
           <button className="btn btn-primary btn-sm" onClick={onEdit}>Edit</button>
           <button className="btn btn-sm" onClick={()=>setShowReflect(true)}><I d={ic.plus} s={14}/> Add reflection</button>
           <button className="btn btn-sm" onClick={()=>setShowMastery(true)}><I d={ic.grid} s={14}/> Catch up mastery</button>
+          <button className="btn btn-sm" onClick={()=>setShowObservations(true)}><I d={ic.bulb} s={14}/> Catch up observations</button>
           {lesson.driveFolder&&<a className="btn btn-sm" href={lesson.driveFolder} target="_blank" rel="noopener"><I d={ic.drive} s={14}/> Drive folder</a>}
           {(lesson.slides||[]).filter(x=>x.url)[0]&&<a className="btn btn-sm" href={lesson.slides.filter(x=>x.url)[0].url} target="_blank" rel="noopener"><I d={ic.slides} s={14}/> Slides</a>}
           {(lesson.worksheets||[]).filter(x=>x.url)[0]&&<a className="btn btn-sm" href={lesson.worksheets.filter(x=>x.url)[0].url} target="_blank" rel="noopener"><I d={ic.file} s={14}/> Worksheet</a>}
@@ -931,6 +1028,7 @@ function LessonPanel({lesson,dateInfo,dateVal,prep,onPrep,onClose,onEdit,state,s
     </div>
     {showReflect&&<ReflectionModal lesson={lesson} defaultDate={dateVal||todayISO()} onClose={()=>setShowReflect(false)} onSave={addReflection}/>}
     {showMastery&&<LessonMasteryModal lesson={lesson} lessonDate={dateVal} state={state} setState={setState} toast={toast} onClose={()=>setShowMastery(false)}/>}
+    {showObservations&&<LessonObservationsModal lesson={lesson} lessonDate={dateVal||todayISO()} state={state} setState={setState} toast={toast} onClose={()=>setShowObservations(false)}/>}
   </>);
 }
 function ReflectionModal({lesson,defaultDate,onClose,onSave}){
