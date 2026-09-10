@@ -865,15 +865,68 @@ function LessonMasteryModal({lesson,lessonDate,state,setState,toast,onClose}){
     </div>
   </div>);
 }
+function ObservationRow({student,lessonId,miscList,activeNorms,setState,toast,isExpanded,onToggleExpand,evFor,setEv}){
+  const [selectedMiscs,setSelectedMiscs]=useState([]);
+  const [newText,setNewText]=useState("");
+  const [showNew,setShowNew]=useState(false);
+  const ev=evFor(student.id);
+  const toggleMisc=id=>setSelectedMiscs(cur=>cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
+  const saveSelected=()=>{
+    if(!selectedMiscs.length)return;
+    toast.checkpoint&&toast.checkpoint();
+    const chosen=miscList.filter(m=>selectedMiscs.includes(m.id));
+    setEv(student.id,c=>({...c,notes:[...c.notes,...chosen.map(m=>({id:uid(),text:m.text,ts:Date.now(),kind:"misconception",lessonId}))]}));
+    setSelectedMiscs([]);
+  };
+  const saveNew=()=>{
+    const t=newText.trim();if(!t)return;
+    toast.checkpoint&&toast.checkpoint();
+    setEv(student.id,c=>({...c,notes:[...c.notes,{id:uid(),text:t,ts:Date.now(),kind:"misconception",lessonId}]}));
+    if(activeNorms[0]){
+      const norm=activeNorms[0];
+      setState(p=>{const m={...(p.misconceptions||{})};const list=m[norm]||[];
+        if(!list.some(x=>x.text.toLowerCase()===t.toLowerCase()))m[norm]=[...list,{id:uid(),text:t}];
+        return{...p,misconceptions:m};});
+    }
+    setNewText("");setShowNew(false);
+  };
+  const delNote=nid=>{toast.checkpoint&&toast.checkpoint();setEv(student.id,c=>({...c,notes:c.notes.filter(n=>n.id!==nid)}));};
+  return(<div className="gl-card" style={{marginBottom:10,cursor:"pointer"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}} onClick={()=>{onToggleExpand();setSelectedMiscs([]);setShowNew(false);}}>
+      <span style={{flex:1,fontWeight:600,fontSize:13.5}}>{student.name}</span>
+      {ev.notes.length>0&&<span className="pill pill-gray" style={{fontSize:10}}>{ev.notes.length} logged</span>}
+      <I d={ic.chevR} s={14}/>
+    </div>
+    {ev.notes.length>0&&<div style={{marginTop:8}}>
+      {ev.notes.map(n=>(<div key={n.id} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",fontSize:12.5}}>
+        <span style={{flex:1,color:"var(--ink-2)"}}>{n.text}</span>
+        <button className="mini-x" style={{width:22,height:22,flex:"0 0 22px"}} onClick={e=>{e.stopPropagation();delNote(n.id);}}><I d={ic.x} s={11}/></button>
+      </div>))}
+    </div>}
+    {isExpanded&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
+      {miscList.length>0&&<>
+        <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+          {miscList.map(m=>{const on=selectedMiscs.includes(m.id);
+            return<button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32,background:on?"var(--olive)":undefined,color:on?"#fff":undefined,borderColor:on?"var(--olive)":undefined}} onClick={()=>toggleMisc(m.id)}>{m.text}</button>;})}
+        </div>
+        {selectedMiscs.length>0&&<button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)",width:"100%",marginBottom:8}} onClick={saveSelected}>Save {selectedMiscs.length} selected</button>}
+      </>}
+      {!showNew?(
+        <button className="add-link" onClick={()=>setShowNew(true)}><I d={ic.plus} s={13}/> New misconception</button>
+      ):(<div style={{display:"flex",gap:8}}>
+        <input className="input" autoFocus value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveNew();}} placeholder="Describe the misconception…"/>
+        <button className="btn btn-primary btn-sm" onClick={saveNew}>Save</button>
+      </div>)}
+    </div>}
+  </div>);
+}
 function LessonObservationsModal({lesson,lessonDate,state,setState,toast,onClose}){
   const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
   const [section,setSection]=useState("All");
   const [expandedSid,setExpandedSid]=useState(null);
-  const [selectedMiscs,setSelectedMiscs]=useState([]);
-  const [newText,setNewText]=useState("");
-  const [showNew,setShowNew]=useState(false);
 
-  const students=state.students.filter(s=>section==="All"||s.section===section);
+  const students=useMemo(()=>state.students.filter(s=>section==="All"||s.section===section),[state.students,section]);
   const activeNorms=useMemo(()=>(lesson.standards||[]).map(normStd),[lesson.standards]);
   const miscList=useMemo(()=>{
     const out=[];const seen=new Set();
@@ -889,28 +942,6 @@ function LessonObservationsModal({lesson,lessonDate,state,setState,toast,onClose
   const evFor=sid=>(((state.evidence||{})[lessonDate]||{})[sid])||{notes:[],followup:false,completed:false};
   const setEv=(sid,fn)=>setState(p=>{const evd={...(p.evidence||{})};const day={...(evd[lessonDate]||{})};const cur=day[sid]||{notes:[],followup:false,completed:false};day[sid]=fn({...cur,notes:[...(cur.notes||[])]});evd[lessonDate]=day;return{...p,evidence:evd};});
 
-  const toggleMisc=id=>setSelectedMiscs(cur=>cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
-  const saveSelected=sid=>{
-    if(!selectedMiscs.length)return;
-    toast.checkpoint&&toast.checkpoint();
-    const chosen=miscList.filter(m=>selectedMiscs.includes(m.id));
-    setEv(sid,c=>({...c,notes:[...c.notes,...chosen.map(m=>({id:uid(),text:m.text,ts:Date.now(),kind:"misconception",lessonId:lesson.id}))]}));
-    setSelectedMiscs([]);
-  };
-  const saveNew=sid=>{
-    const t=newText.trim();if(!t)return;
-    toast.checkpoint&&toast.checkpoint();
-    setEv(sid,c=>({...c,notes:[...c.notes,{id:uid(),text:t,ts:Date.now(),kind:"misconception",lessonId:lesson.id}]}));
-    if(activeNorms[0]){
-      const norm=activeNorms[0];
-      setState(p=>{const m={...(p.misconceptions||{})};const list=m[norm]||[];
-        if(!list.some(x=>x.text.toLowerCase()===t.toLowerCase()))m[norm]=[...list,{id:uid(),text:t}];
-        return{...p,misconceptions:m};});
-    }
-    setNewText("");setShowNew(false);
-  };
-  const delNote=(sid,nid)=>{toast.checkpoint&&toast.checkpoint();setEv(sid,c=>({...c,notes:c.notes.filter(n=>n.id!==nid)}));};
-
   return(<div className="modal-wrap" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="modal" style={{maxWidth:600}}>
       <div className="modal-head"><div><div className="eyebrow" style={{marginBottom:2}}>Catch up observations</div><h2 style={{fontSize:18}}>{lesson.title}</h2></div>
@@ -922,39 +953,12 @@ function LessonObservationsModal({lesson,lessonDate,state,setState,toast,onClose
           <button className={"fchip"+(section==="All"?" on":"")} onClick={()=>setSection("All")}>All classes</button>
           {sections.map(s=><button key={s} className={"fchip"+(section===s?" on":"")} onClick={()=>setSection(s)}>{s}</button>)}
         </div>}
-        {students.map(s=>{
-          const ev=evFor(s.id);
-          const expanded=expandedSid===s.id;
-          return(<div key={s.id} className="gl-card" style={{marginBottom:10,cursor:"pointer"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}} onClick={()=>{setExpandedSid(expanded?null:s.id);setSelectedMiscs([]);setShowNew(false);}}>
-              <span style={{flex:1,fontWeight:600,fontSize:13.5}}>{s.name}</span>
-              {ev.notes.length>0&&<span className="pill pill-gray" style={{fontSize:10}}>{ev.notes.length} logged</span>}
-              <I d={ic.chevR} s={14}/>
-            </div>
-            {ev.notes.length>0&&<div style={{marginTop:8}}>
-              {ev.notes.map(n=>(<div key={n.id} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",fontSize:12.5}}>
-                <span style={{flex:1,color:"var(--ink-2)"}}>{n.text}</span>
-                <button className="mini-x" style={{width:22,height:22,flex:"0 0 22px"}} onClick={e=>{e.stopPropagation();delNote(s.id,n.id);}}><I d={ic.x} s={11}/></button>
-              </div>))}
-            </div>}
-            {expanded&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
-              {miscList.length>0&&<>
-                <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                  {miscList.map(m=>{const on=selectedMiscs.includes(m.id);
-                    return<button key={m.id} className="st-mini" style={{flex:"0 0 auto",padding:"0 10px",height:32,background:on?"var(--olive)":undefined,color:on?"#fff":undefined,borderColor:on?"var(--olive)":undefined}} onClick={()=>toggleMisc(m.id)}>{m.text}</button>;})}
-                </div>
-                {selectedMiscs.length>0&&<button className="st-mini" style={{background:"var(--olive)",color:"#fff",borderColor:"var(--olive)",width:"100%",marginBottom:8}} onClick={()=>saveSelected(s.id)}>Save {selectedMiscs.length} selected</button>}
-              </>}
-              {!showNew?(
-                <button className="add-link" onClick={()=>setShowNew(true)}><I d={ic.plus} s={13}/> New misconception</button>
-              ):(<div style={{display:"flex",gap:8}}>
-                <input className="input" autoFocus value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveNew(s.id);}} placeholder="Describe the misconception…"/>
-                <button className="btn btn-primary btn-sm" onClick={()=>saveNew(s.id)}>Save</button>
-              </div>)}
-            </div>}
-          </div>);
-        })}
+        {students.map(s=>(
+          <ObservationRow key={s.id} student={s} lessonId={lesson.id} miscList={miscList} activeNorms={activeNorms}
+            setState={setState} toast={toast}
+            isExpanded={expandedSid===s.id} onToggleExpand={()=>setExpandedSid(expandedSid===s.id?null:s.id)}
+            evFor={evFor} setEv={setEv}/>
+        ))}
       </div>
       <div className="modal-foot"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
     </div>
