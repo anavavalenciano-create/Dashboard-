@@ -1187,9 +1187,9 @@ function Dashboard({state,sched,setState,toast,onOpen,go,goToGoal}){
           </div>):<div style={{color:"var(--muted)",fontSize:13,padding:"4px 0"}}>None scheduled ahead. Tag a lesson as “Assessment” to see it here.</div>}
         </div>
 
-        {!!goalReminders.length&&<div className="card" style={{padding:"20px 24px"}}>
+        <div className="card" style={{padding:"20px 24px"}}>
           <div className="section-hd"><h3>Goal check-ins</h3></div>
-          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {goalReminders.length?(<div style={{display:"flex",flexDirection:"column",gap:2}}>
             {goalReminders.slice(0,6).map(({g,stu,overdue})=>(
               <div key={g.id} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
                 <button style={{flex:1,minWidth:0,textAlign:"left",display:"flex",alignItems:"center",gap:8}} onClick={()=>goToGoal&&goToGoal(g.studentId)}>
@@ -1203,8 +1203,8 @@ function Dashboard({state,sched,setState,toast,onOpen,go,goToGoal}){
                 <button className="icon-btn" style={{width:30,height:30,flex:"0 0 30px"}} title="Dismiss for today" onClick={()=>dismissReminder(g.id)}><I d={ic.x} s={13}/></button>
               </div>
             ))}
-          </div>
-        </div>}
+          </div>):<div style={{color:"var(--muted)",fontSize:13,padding:"4px 0"}}>Nothing due tomorrow or overdue. Set a target date on a student goal to see it here.</div>}
+        </div>
 
         <div className="card" style={{padding:"20px 24px"}}>
           <div className="section-hd"><h3>To-Do</h3></div>
