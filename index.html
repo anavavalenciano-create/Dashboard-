@@ -563,6 +563,7 @@ const EMPTY_STATE={
   masteryHistory:{}, // studentId -> code -> [{date,level}] — one entry per day touched, for week-over-week comparison
   weeklyReportNotes:{}, // "weekMonday|standardNorm" -> suggested next-steps text
   weeklyReportDayNotes:{}, // dateISO -> suggested next-steps text, for the day-by-day Math view
+  todos:[], // [{id,text,done}] — simple running to-do list on the Dashboard
 };
 const LS_KEY="teacher-os-state-v1";
 
@@ -1097,6 +1098,11 @@ function Dashboard({state,sched,setState,toast,onOpen,go,goToGoal}){
   const markGoalMet=gid=>{toast.checkpoint&&toast.checkpoint();setState(p=>({...p,goals:p.goals.map(g=>g.id===gid?{...g,status:"met",metDate:todayISO()}:g)}));toast.show("Goal marked met");};
   const dismissReminder=gid=>{setState(p=>{const d={...(p.dismissedGoalReminders||{})};d[t]=[...(d[t]||[]),gid];return{...p,dismissedGoalReminders:d};});};
 
+  const [todoText,setTodoText]=useState("");
+  const addTodo=()=>{const txt=todoText.trim();if(!txt)return;toast.checkpoint&&toast.checkpoint();setState(p=>({...p,todos:[...(p.todos||[]),{id:uid(),text:txt,done:false}]}));setTodoText("");};
+  const toggleTodo=id=>{toast.checkpoint&&toast.checkpoint();setState(p=>({...p,todos:(p.todos||[]).map(td=>td.id===id?{...td,done:!td.done}:td)}));};
+  const deleteTodo=id=>{toast.checkpoint&&toast.checkpoint();setState(p=>({...p,todos:(p.todos||[]).filter(td=>td.id!==id)}));};
+
   // monthly progress
   const monthDays=sched.instructional.filter(d=>d.slice(0,7)===t.slice(0,7));
   const passed=monthDays.filter(d=>d<=t).length;
@@ -1199,6 +1205,23 @@ function Dashboard({state,sched,setState,toast,onOpen,go,goToGoal}){
             ))}
           </div>
         </div>}
+
+        <div className="card" style={{padding:"20px 24px"}}>
+          <div className="section-hd"><h3>To-Do</h3></div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <input className="input" value={todoText} onChange={e=>setTodoText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addTodo();}} placeholder="Add a task…"/>
+            <button className="btn btn-primary btn-sm" onClick={addTodo}>Add</button>
+          </div>
+          {(state.todos||[]).length?(<div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {[...(state.todos||[])].sort((a,b)=>(a.done===b.done)?0:a.done?1:-1).map(td=>(
+              <div key={td.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
+                <button className={"check-box"+(td.done?" on":"")} style={{flex:"0 0 auto"}} onClick={()=>toggleTodo(td.id)}>{td.done&&<I d={ic.check} s={13}/>}</button>
+                <span style={{flex:1,fontSize:13.5,color:td.done?"var(--muted)":"var(--ink)",textDecoration:td.done?"line-through":"none"}}>{td.text}</span>
+                <button className="mini-x" style={{width:24,height:24,flex:"0 0 24px"}} onClick={()=>deleteTodo(td.id)}><I d={ic.x} s={12}/></button>
+              </div>
+            ))}
+          </div>):<div style={{fontSize:13,color:"var(--muted)"}}>Nothing on your list yet.</div>}
+        </div>
 
         <div className="card" style={{padding:"20px 24px"}}>
           <div className="section-hd"><h3>Jump in</h3></div>
