@@ -396,7 +396,7 @@ label.fl{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-
 .st-heat .st-desk[data-lv="1"]{background:var(--terra-soft);border-color:var(--terra);}
 .st-heat .st-desk[data-lv="2"]{background:#F1E6D3;border-color:#CBA968;}
 .st-heat .st-desk[data-lv="3"]{background:var(--olive-soft);border-color:var(--olive);}
-.st-heat .st-desk[data-lv="4"]{background:#DDE3D2;border-color:var(--olive-deep);}
+.st-heat .st-desk[data-lv="4"]{background:#DCE4F0;border-color:#1A365D;}
 
 .gl-bar{display:flex;gap:4px;margin:2px 0;}
 .gl-seg{flex:1;height:10px;border-radius:4px;background:var(--surface-2);border:1px solid var(--border);position:relative;}
@@ -708,7 +708,7 @@ const M_LEVELS=[
   {v:1,short:"NY",label:"Not yet",bg:"var(--terra-soft)",fg:"var(--terra-deep)",bd:"var(--terra)"},
   {v:2,short:"AP",label:"Approaching",bg:"#F1E6D3",fg:"#8B6A3C",bd:"#CBA968"},
   {v:3,short:"M",label:"Meets",bg:"var(--olive-soft)",fg:"var(--olive-deep)",bd:"var(--olive)"},
-  {v:4,short:"E",label:"Exceeds",bg:"var(--olive)",fg:"#fff",bd:"var(--olive-deep)"},
+  {v:4,short:"E",label:"Exceeds",bg:"#2C5282",fg:"#fff",bd:"#1A365D"},
 ];
 
 /* ============================================================
@@ -2074,6 +2074,21 @@ function bumpMasteryLevel(setState,studentId,code,forDate){
     return{...p,mastery,masteryHistory:hist};
   });
 }
+function setMasteryLevelAt(setState,studentId,code,level,forDate){
+  const targetDate=forDate||todayISO();
+  setState(p=>{
+    const hist={...(p.masteryHistory||{})};
+    const studHist={...(hist[studentId]||{})};
+    const list=studHist[code]?[...studHist[code]]:[];
+    const idx=list.findIndex(e=>e.date===targetDate);
+    if(idx>=0)list[idx]={date:targetDate,level};else list.push({date:targetDate,level});
+    studHist[code]=list;hist[studentId]=studHist;
+    const latest=[...list].sort((a,b)=>a.date.localeCompare(b.date)).pop();
+    const mastery={...p.mastery,[studentId]:{...(p.mastery[studentId]||{})}};
+    mastery[studentId][code]=latest.level;
+    return{...p,mastery,masteryHistory:hist};
+  });
+}
 // latest recorded level for a student/standard on or before a given date — null if no history exists yet
 function masteryAsOf(state,studentId,standardNorm,dateISO){
   const studHist=(state.masteryHistory||{})[studentId]||{};
@@ -2117,7 +2132,7 @@ function currentWeekMonday(today){
 /* ============================================================
    12n0. WEEKLY DATA REPORT  (team meeting printout)
 ============================================================ */
-const BAR_LEVEL_COLORS={1:"#D9483C",2:"#E8A83A",3:"#5F9A3D",4:"#2F6B2A"};
+const BAR_LEVEL_COLORS={1:"#D9483C",2:"#E8A83A",3:"#5F9A3D",4:"#1E4976"};
 function LevelCountList({counts}){
   return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 8px",marginTop:6,justifyItems:"start"}}>
     {[1,2,3,4].map(lv=>(<div key={lv} style={{display:"flex",alignItems:"center",gap:4}}>
@@ -3117,6 +3132,12 @@ function SeatingView({state,setState,toast}){
     setSelectedMiscs([]);setActive(null);
   };
   useEffect(()=>{setSelectedMiscs([]);},[active]);
+  const setMasteryForActive=(sid,level)=>{
+    const rawCode=activeLesson&&(activeLesson.standards||[])[0];
+    if(!rawCode)return;
+    toast.checkpoint&&toast.checkpoint();
+    setMasteryLevelAt(setState,sid,rawCode,level);
+  };
   const discardNote=()=>{if(saveTimer.current){clearTimeout(saveTimer.current);saveTimer.current=null;}setNoteFor(null);setNoteText("");};
   useEffect(()=>{
     if(saveTimer.current)clearTimeout(saveTimer.current);
@@ -3290,6 +3311,13 @@ function SeatingView({state,setState,toast}){
         </div>
 
         {!noteFor&&activeNorms.length>0&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Mastery for today's standard</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
+            {[{lv:1,label:"Does not understand"},{lv:2,label:"Approaching"},{lv:3,label:"Understood concept"},{lv:4,label:"Can explain and teach"}].map(({lv,label})=>{
+              const meta=M_LEVELS[lv];
+              return<button key={lv} style={{padding:"10px 11px",borderRadius:10,border:"1.5px solid "+meta.bd,background:meta.bg,color:meta.fg,fontWeight:600,fontSize:11.5,textAlign:"left",lineHeight:1.25}} onClick={()=>setMasteryForActive(s.id,lv)}>{label}</button>;
+            })}
+          </div>
           {activeMiscList.length>0&&<>
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
