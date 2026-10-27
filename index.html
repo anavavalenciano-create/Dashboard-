@@ -3011,6 +3011,17 @@ function SeatingView({state,setState,toast}){
   const saveTimer=useRef(null);
   const commitRef=useRef(()=>{});
   const canvasRef=useRef(null);
+  const scrollWrapRef=useRef(null);
+  const [canvasScale,setCanvasScale]=useState(1);
+  useEffect(()=>{
+    const el=scrollWrapRef.current;
+    if(!el)return;
+    const update=()=>{const w=el.clientWidth;setCanvasScale(w>0?Math.min(1,w/ROOM_W):1);};
+    update();
+    const ro=new ResizeObserver(update);
+    ro.observe(el);
+    return()=>ro.disconnect();
+  },[]);
   const drag=useRef(null); // {id,moved,startX,startY}
   const today=todayISO();
   const sched=useMemo(()=>computeSchedule(state),[state]);
@@ -3235,8 +3246,11 @@ function SeatingView({state,setState,toast}){
       </div>}
     </div>}
 
-    <div className="st-canvas-scroll">
-    <div ref={canvasRef} className={"st-canvas-wrap report-doc"+(heat?" st-heat":"")} style={{height:roomHeight}} onClick={onCanvasClick}>
+    <div className="st-canvas-scroll" ref={scrollWrapRef} style={canvasScale<1?{overflow:"hidden"}:undefined}>
+    <div style={canvasScale<1?{width:ROOM_W*canvasScale,height:roomHeight*canvasScale,position:"relative"}:undefined}>
+    <div ref={canvasRef} className={"st-canvas-wrap report-doc"+(heat?" st-heat":"")}
+      style={canvasScale<1?{width:ROOM_W,height:roomHeight,transform:`scale(${canvasScale})`,transformOrigin:"top left",position:"absolute",top:0,left:0}:{height:roomHeight}}
+      onClick={onCanvasClick}>
       <div className="print-only" style={{position:"absolute",top:10,left:14,zIndex:5}}><div className="serif" style={{fontSize:19,fontWeight:600}}>Seating chart · {section}</div><div style={{fontSize:12,color:"var(--muted)"}}>{prettyLong(today)}</div></div>
       <div className="st-board"></div><div className="st-board-label">Front of room</div>
       {desks.map(d=>{
@@ -3262,6 +3276,7 @@ function SeatingView({state,setState,toast}){
           {mode==="teach"&&e&&e.followup&&<div className="st-clock"><I d={ic.clock} s={11}/></div>}
         </div>);
       })}
+    </div>
     </div>
     </div>
 
