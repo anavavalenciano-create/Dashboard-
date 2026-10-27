@@ -3132,11 +3132,21 @@ function SeatingView({state,setState,toast}){
     setSelectedMiscs([]);setActive(null);
   };
   useEffect(()=>{setSelectedMiscs([]);},[active]);
+  const MASTERY_LABELS={1:"Does not understand",2:"Approaching",3:"Understood concept",4:"Can explain and teach"};
   const setMasteryForActive=(sid,level)=>{
     const rawCode=activeLesson&&(activeLesson.standards||[])[0];
     if(!rawCode)return;
     toast.checkpoint&&toast.checkpoint();
-    setMasteryLevelAt(setState,sid,rawCode,level);
+    const norm=normStd(rawCode);
+    // write to the lesson's own key AND any other key for this same standard, so an older entry can't mask the new level
+    const keys=new Set([rawCode]);
+    Object.keys((state.mastery||{})[sid]||{}).forEach(k=>{if(normStd(k)===norm)keys.add(k);});
+    keys.forEach(k=>setMasteryLevelAt(setState,sid,k,level));
+    // show the result on the desks right away, colored for today's standard
+    if(!heat)setHeat(true);
+    setHeatStd(norm);
+    const st=studById[sid];
+    toast.show&&toast.show((st?st.name:"Student")+": "+MASTERY_LABELS[level]);
   };
   const discardNote=()=>{if(saveTimer.current){clearTimeout(saveTimer.current);saveTimer.current=null;}setNoteFor(null);setNoteText("");};
   useEffect(()=>{
@@ -3313,10 +3323,11 @@ function SeatingView({state,setState,toast}){
         {!noteFor&&activeNorms.length>0&&<div style={{marginBottom:12}}>
           <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Mastery for today's standard</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
-            {[{lv:1,label:"Does not understand"},{lv:2,label:"Approaching"},{lv:3,label:"Understood concept"},{lv:4,label:"Can explain and teach"}].map(({lv,label})=>{
-              const meta=M_LEVELS[lv];
-              return<button key={lv} style={{padding:"10px 11px",borderRadius:10,border:"1.5px solid "+meta.bd,background:meta.bg,color:meta.fg,fontWeight:600,fontSize:11.5,textAlign:"left",lineHeight:1.25}} onClick={()=>setMasteryForActive(s.id,lv)}>{label}</button>;
-            })}
+            {(()=>{const curLv=lvlOf(s.id,activeNorms[0]);
+              return[{lv:1,label:"Does not understand"},{lv:2,label:"Approaching"},{lv:3,label:"Understood concept"},{lv:4,label:"Can explain and teach"}].map(({lv,label})=>{
+                const meta=M_LEVELS[lv];const on=curLv===lv;
+                return<button key={lv} style={{padding:"10px 11px",borderRadius:10,border:"1.5px solid "+meta.bd,background:meta.bg,color:meta.fg,fontWeight:600,fontSize:11.5,textAlign:"left",lineHeight:1.25,display:"flex",alignItems:"center",gap:5,opacity:curLv>0&&!on?0.55:1,boxShadow:on?"0 0 0 2px var(--surface), 0 0 0 4px "+meta.bd:"none"}} onClick={()=>setMasteryForActive(s.id,lv)}>{on&&<I d={ic.check} s={12}/>}{label}</button>;
+              });})()}
           </div>
           {activeMiscList.length>0&&<>
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:6}}>Tap all that apply, then Save</div>
