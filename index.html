@@ -2234,7 +2234,7 @@ function DayColumnCard({day,dayName,dayNotes,onNotesChange}){
 
 function WeeklyReportView({state,setState,toast}){
   const t=todayISO();
-  const [monday,setMonday]=useState(()=>lastFullWeek(t).monday);
+  const [monday,setMonday]=useState(()=>{const d=dow(t);return(d>=2&&d<=5)?currentWeekMonday(t):lastFullWeek(t).monday;}); // Tue–Fri: this week's live data · Mon/weekend: the week you're reviewing
   const friday=addDays(monday,4);
   const sections=useMemo(()=>[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort(),[state.students]);
   const [scope,setScope]=useState("All");
